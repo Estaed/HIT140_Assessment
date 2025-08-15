@@ -1,70 +1,63 @@
-# HIT140 Data Science - Investigation A
-
-This repository contains the data science investigation project for HIT140 Data Science course at Charles Darwin University.
+# Investigation A: Bat Predation Risk Analysis
 
 ## Project Overview
+This project analyzes whether bats perceive rats as predators or just competitors by examining behavioral patterns and vigilance responses.
 
-This project involves data preprocessing, analysis, and machine learning algorithm comparison for behavioral ecology data. The investigation focuses on analyzing animal behavior patterns and predator perception evidence.
+## File Structure and Workflow
 
-## Project Structure
+### 🔍 **ml_algorithm_comparison.py** - ML Algorithm Testing Tool
+- **Purpose**: Tests and compares multiple ML algorithms to find the best one for habit imputation
+- **What it does**: 
+  - Tests 13 different algorithms (KNN, Decision Trees, Random Forest, SVM, etc.)
+  - Uses cross-validation to evaluate performance
+  - Identifies the best algorithm based on accuracy, overfitting, and other metrics
+- **Output**: Algorithm comparison results and recommendations
+- **Accuracy claims**: Results from cross-validation testing (not final implementation)
 
+### 📊 **investigation_A.py** - Main Investigation Implementation
+- **Purpose**: Implements the complete investigation using the best algorithm found
+- **Phases**:
+  - Phase 1: Data Loading and Initial Exploration
+  - Phase 2: Data Cleaning and Habit Analysis  
+  - Phase 3: Missing Value Imputation (uses best algorithm from comparison)
+  - Phase 4: Feature Engineering
+  - Phase 5: Statistical Analysis
+  - Phase 6: Visualization and Conclusion
+
+## 🔄 **Correct Workflow**
+
+1. **First**: Run `ml_algorithm_comparison.py` to test algorithms and find the best one
+2. **Then**: Run `investigation_A.py` to implement the complete investigation
+3. **Result**: The investigation uses the best algorithm parameters identified by the comparison tool
+
+## ⚠️ **Important Notes**
+
+- **Accuracy claims**: The 73.15% accuracy mentioned in both files comes from the ML comparison tool's cross-validation testing
+- **Different purposes**: 
+  - `ml_algorithm_comparison.py` = Testing/benchmarking tool
+  - `investigation_A.py` = Actual implementation
+- **XGBoost issue**: Fixed in the comparison tool with error handling and simplified parameters
+
+## 🚀 **How to Run**
+
+```bash
+# Step 1: Test algorithms and find the best one
+python ml_algorithm_comparison.py
+
+# Step 2: Run the complete investigation
+python investigation_A.py
 ```
-Investigation A/
-├── datasets/
-│   ├── original/          # Original dataset files
-│   └── produced/          # Processed and cleaned datasets
-├── plots/                 # Generated visualizations and plots
-├── investigation_a_preprocessing.py  # Main preprocessing script
-├── ml_algorithm_comparison.py       # Machine learning comparison
-├── dataset1.csv          # Original dataset 1
-├── dataset2.csv          # Original dataset 2
-└── Project and Data Brief v.1.pdf   # Project documentation
-```
 
-## Key Features
+## 📈 **Current Best Algorithm**
+- **Gradient Boosting** with parameters:
+  - `n_estimators=100`
+  - `max_depth=3` 
+  - `learning_rate=0.05`
+  - `subsample=0.7`
+  - `random_state=42`
 
-- **Data Preprocessing**: Comprehensive data cleaning and preparation
-- **Exploratory Data Analysis**: Visualizations and statistical analysis
-- **Machine Learning**: Algorithm comparison and model evaluation
-- **Behavioral Analysis**: Focus on animal behavior patterns and predator perception
-
-## Generated Visualizations
-
-The project includes various plots and visualizations:
-- Correlation cluster maps
-- Data quality analysis
-- Gradient boosting tuning results
-- Habit category simplification
-- Habit rat timing analysis
-- Key features pairplot
-- Predator perception evidence
-- Summary visualizations
-- Vigilance patterns
-
-## Files Description
-
-- `investigation_a_preprocessing.py`: Main preprocessing script with data cleaning and analysis
-- `ml_algorithm_comparison.py`: Machine learning algorithm comparison and evaluation
-- `dataset1.csv` & `dataset2.csv`: Original datasets
-- `Project and Data Brief v.1.pdf`: Detailed project documentation and requirements
-
-## Usage
-
-1. Ensure you have Python installed with required data science libraries
-2. Run the preprocessing script: `python investigation_a_preprocessing.py`
-3. Run the ML comparison: `python ml_algorithm_comparison.py`
-4. Check the `plots/` directory for generated visualizations
-
-## Dependencies
-
-The project requires standard data science Python libraries:
-- pandas
-- numpy
-- matplotlib
-- seaborn
-- scikit-learn
-- and other common data science packages
-
-## Author
-
-Charles Darwin University - HIT140 Data Science Course 
+## 🔧 **Recent Fixes**
+- Fixed XGBoost NaN values by simplifying parameters
+- Added error handling for failed algorithms
+- Clarified relationship between testing tool and implementation
+- Added comprehensive documentation about workflow 

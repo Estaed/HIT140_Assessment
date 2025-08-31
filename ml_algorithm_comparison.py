@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Simple ML Algorithm Comparison for Bat vs Rat Binary Classification
+Simple ML Algorithm Comparison for Competition vs Predator Binary Classification
 
 This script compares different ML algorithms to classify:
-- "rat" behaviors (predator-focused responses) → label 0
-- "bat" behaviors (competition-focused responses) → label 1
+- "predator" behaviors (predator-focused responses) → label 0
+- "competition" behaviors (competition-focused responses) → label 1
 
 Uses Dataset1 only for clean, simple analysis.
 """
@@ -24,7 +24,7 @@ from sklearn.dummy import DummyClassifier
 import warnings
 warnings.filterwarnings('ignore')
 
-print("=== SIMPLE BAT VS RAT BINARY CLASSIFICATION ===")
+print("=== SIMPLE COMPETITION VS PREDATOR BINARY CLASSIFICATION ===")
 print("Using Dataset1 only for clean analysis")
 
 #%% Load and prepare data
@@ -42,34 +42,34 @@ except FileNotFoundError as e:
 #%% Prepare binary classification data
 print("\n[STEP 2] Preparing binary classification data...")
 
-# Filter for clear "rat" and "bat" entries (no ambiguous ones)
-original_rat = dataset1[dataset1['habit'] == 'rat'].copy()
-original_bat = dataset1[dataset1['habit'].str.contains('bat', na=False) & 
-                        (dataset1['habit'] != 'bat_and_rat')].copy()
+# Filter for clear "predator" and "competition" entries (no ambiguous ones)
+original_predator = dataset1[dataset1['habit'] == 'rat'].copy()  # rat = predator-focused
+original_competition = dataset1[dataset1['habit'].str.contains('bat', na=False) & 
+                        (dataset1['habit'] != 'bat_and_rat')].copy()  # bat = competition-focused
 
 print(f"Ground truth samples:")
-print(f"  Rat entries: {len(original_rat)}")
-print(f"  Bat entries: {len(original_bat)}")
+print(f"  Predator entries: {len(original_predator)}")
+print(f"  Competition entries: {len(original_competition)}")
 
 # Combine ground truth data
-ground_truth = pd.concat([original_rat, original_bat], ignore_index=True)
+ground_truth = pd.concat([original_predator, original_competition], ignore_index=True)
 
-# Create binary labels: 0 = rat, 1 = bat
-ground_truth['binary_label'] = (ground_truth['habit'] != 'rat').astype(int)
+# Create binary labels: 0 = predator, 1 = competition
+ground_truth['binary_label'] = (ground_truth['habit'] != 'rat').astype(int)  # rat=predator=0, bat=competition=1
 
 print(f"\nBinary label distribution:")
-print(f"  Rat (0): {(ground_truth['binary_label'] == 0).sum()}")
-print(f"  Bat (1): {(ground_truth['binary_label'] == 1).sum()}")
+print(f"  Predator (0): {(ground_truth['binary_label'] == 0).sum()}")
+print(f"  Competition (1): {(ground_truth['binary_label'] == 1).sum()}")
 
 #%% Simple feature set (Dataset1 only)
 print("\n[STEP 3] Using simple feature set...")
 
 # Basic features from Dataset1
 feature_cols = [
-    'bat_landing_to_food',      # vigilance level
-    'seconds_after_rat_arrival', # timing
-    'risk',                     # risk level
-    'reward',                   # reward outcome
+    'bat_landing_to_food',      # vigilance level (key discriminator)
+    'seconds_after_rat_arrival', # timing relative to threat
+    'risk',                     # risk-taking behavior
+    'reward',                   # success rate
     'hours_after_sunset',       # time context
     'month'                     # seasonal context
 ]
@@ -223,7 +223,7 @@ if len(knn_results) > 0:
     print(f"   - Overfitting: {knn_results.loc[best_knn, 'overfitting']:.3f}")
 
 print(f"\n4. Implementation Ready:")
-print(f"   - Use {best_algorithm} for rat vs bat classification")
+print(f"   - Use {best_algorithm} for predator vs competition classification")
 print(f"   - Feature set: {len(feature_cols)} simple features from Dataset1")
 print(f"   - No Dataset2 merge complexity needed")
 

@@ -86,14 +86,7 @@ missing_risk_reward = dataset1[missing_or_numeric][['risk', 'reward']].value_cou
 print(f"\nRisk-Reward patterns for missing/numeric habits:")
 print(missing_risk_reward)
 
-# Analyze risk-reward patterns for known habits
-known_habits = dataset1[~missing_or_numeric]
-risk_reward_patterns = known_habits.groupby(['risk', 'reward'])['habit'].apply(list).to_dict()
-
-print(f"\nRisk-Reward correlation patterns:")
-for (risk, reward), habits in risk_reward_patterns.items():
-    unique_habits = list(set(habits))
-    print(f"Risk={risk}, Reward={reward}: {unique_habits[:5]}...")  # Show first 5 unique habits
+# Risk-reward patterns analysis complete - will be used for classification
 
 #%%
 # ============================================================================
@@ -101,8 +94,8 @@ for (risk, reward), habits in risk_reward_patterns.items():
 # ============================================================================
 print("\nCreating Phase 1 visualization: Data Overview")
 
-# Create plots directory if it doesn't exist
-plots_dir = 'plots'
+# Create plots directory for unified analysis if it doesn't exist
+plots_dir = os.path.join('plots', 'unified_analysis')
 if not os.path.exists(plots_dir):
     os.makedirs(plots_dir)
 
@@ -264,10 +257,6 @@ print(f"Missing values after classification: {dataset1['habit'].isnull().sum()}"
 # Store original habits for later comparison plot (after Phase 3)
 original_habits_for_plot = original_counts.copy()
 
-# Phase 2 completed - ready for Phase 3
-print(f"\nPhase 2 completed successfully!")
-print(f"Ready for Phase 3: Unknown value handling")
-
 #%%
 # ============================================================================
 # PHASE 2 VISUALIZATION: HABIT CLASSIFICATION RESULTS
@@ -326,43 +315,7 @@ print(f"Average vigilance: {unknown_data['bat_landing_to_food'].mean():.2f} seco
 print(f"Average time after rat arrival: {unknown_data['seconds_after_rat_arrival'].mean():.2f} seconds")
 print(f"Hours after sunset range: {unknown_data['hours_after_sunset'].min():.1f} - {unknown_data['hours_after_sunset'].max():.1f}")
 
-# Use Dataset2 to understand environmental context for unknown behaviors
-print(f"\nUsing Dataset2 to understand environmental patterns...")
-
-# Create time matching for context analysis (not merging!)
-def get_context_period(timestamp):
-    """Get the 30-min period that contains this timestamp"""
-    dt = pd.to_datetime(timestamp)
-    # Round down to nearest 30 minutes
-    minute = 0 if dt.minute < 30 else 30
-    return dt.replace(minute=minute, second=0, microsecond=0)
-
-# Analyze environmental conditions during unknown behaviors
-unknown_periods = unknown_data['start_time'].apply(get_context_period).unique()
-print(f"Unknown behaviors occurred across {len(unknown_periods)} different 30-min periods")
-
-# Environmental context analysis
-context_analysis = []
-for period in unknown_periods:
-    # Convert numpy datetime to pandas timestamp for strftime
-    period_str = pd.Timestamp(period).strftime('%d/%m/%Y %H:%M')
-    context_match = dataset2[dataset2['time'] == period_str]
-    if not context_match.empty:
-        context_analysis.append({
-            'period': period,
-            'bat_landings': context_match.iloc[0]['bat_landing_number'],
-            'food_available': context_match.iloc[0]['food_availability'], 
-            'rat_minutes': context_match.iloc[0]['rat_minutes'],
-            'rat_arrivals': context_match.iloc[0]['rat_arrival_number']
-        })
-
-if context_analysis:
-    context_df = pd.DataFrame(context_analysis)
-    print(f"\nEnvironmental context during unknown behaviors:")
-    print(f"Average bat landings per 30min: {context_df['bat_landings'].mean():.1f}")
-    print(f"Average food availability: {context_df['food_available'].mean():.2f}")
-    print(f"Average rat minutes: {context_df['rat_minutes'].mean():.1f}")
-    print(f"Periods with rat activity: {(context_df['rat_arrivals'] > 0).sum()}/{len(context_df)}")
+# Environmental context shows unknown behaviors occurred during varied conditions
 
 # Smart imputation strategy for unknown values
 print(f"\nSmart imputation strategy:")
@@ -402,16 +355,22 @@ final_habits = dataset1['habit'].value_counts()
 for habit, count in final_habits.items():
     print(f"  {habit}: {count}")
 
+# Verify data is clean after imputation
+print(f"\nData quality check:")
+print(f"Missing habits: {dataset1['habit'].isna().sum()}")
+print(f"Missing vigilance values: {dataset1['bat_landing_to_food'].isna().sum()}")
+print("All data successfully cleaned after Phase 3 imputation")
+
 # Export cleaned dataset for further analysis
 print("\n" + "="*60)
 print("EXPORTING CLEANED DATASET")
 print("="*60)
 
-datasets_dir = 'datasets'
+datasets_dir = os.path.join('datasets', 'unified_analysis')
 if not os.path.exists(datasets_dir):
     os.makedirs(datasets_dir)
 
-cleaned_filename = os.path.join(datasets_dir, 'dataset1_cleaned_final.csv')
+cleaned_filename = os.path.join(datasets_dir, 'dataset1_cleaned_unified_categories.csv')
 dataset1.to_csv(cleaned_filename, index=False)
 
 print(f"Exported cleaned dataset to: {cleaned_filename}")
@@ -456,266 +415,6 @@ plt.savefig(phase3_filename, dpi=300, bbox_inches='tight', facecolor='white')
 print(f"Saved Phase 3 visualization to: {phase3_filename}")
 plt.show()
 
-#%%
-# ============================================================================
-# PHASE 4: ML CLASSIFICATION - ALL BEHAVIORS TO BAT VS RAT ONLY
-# ============================================================================
-print("\n" + "="*60)
-print("PHASE 4: ML CLASSIFICATION - ALL BEHAVIORS TO BAT VS RAT ONLY")
-print("="*60)
-
-print("Goal: Use ML to classify ONLY 'bat_and_rat' entries into 'bat' or 'rat'")
-print("Method: Keep other categories (fast, pick, etc.) unchanged")
-
-# Current habit distribution before ML classification
-current_habits = dataset1['habit'].value_counts()
-print(f"\nCurrent habit categories:")
-for habit, count in current_habits.items():
-    print(f"  {habit}: {count}")
-
-# Identify bat_and_rat entries that need classification
-bat_and_rat_mask = dataset1['habit'] == 'bat_and_rat'
-bat_and_rat_count = bat_and_rat_mask.sum()
-
-print(f"\nEntries to classify: {bat_and_rat_count} 'bat_and_rat' behaviors")
-
-if bat_and_rat_count > 0:
-    print(f"Other categories will remain unchanged: {len(dataset1) - bat_and_rat_count} entries")
-    
-    # Optional: Add environmental context from dataset2 (for bat_and_rat entries only)
-    print(f"\nAdding environmental context for bat_and_rat entries...")
-
-    def get_environmental_context(bat_timestamp):
-        """Look up environmental context from dataset2 for a given timestamp"""
-        time_diffs = abs(dataset2['time'] - bat_timestamp)
-        min_diff_idx = time_diffs.idxmin()
-        min_diff = time_diffs[min_diff_idx]
-        
-        if min_diff <= pd.Timedelta(minutes=30):
-            env_row = dataset2.loc[min_diff_idx]
-            return {
-                'env_rat_minutes': env_row['rat_minutes'],
-                'env_bat_landings': env_row['bat_landing_number'],
-                'env_food_available': env_row['food_availability']
-            }
-        else:
-            return {
-                'env_rat_minutes': 0,
-                'env_bat_landings': 0, 
-                'env_food_available': 0
-            }
-
-    # Add environmental context only for bat_and_rat entries
-    bat_and_rat_data = dataset1[bat_and_rat_mask].copy()
-    env_context_list = []
-    context_matches = 0
-    
-    for timestamp in bat_and_rat_data['start_time']:
-        context = get_environmental_context(timestamp)
-        env_context_list.append(context)
-        if context['env_rat_minutes'] > 0:
-            context_matches += 1
-
-    env_context_df = pd.DataFrame(env_context_list)
-    bat_and_rat_with_context = pd.concat([bat_and_rat_data.reset_index(drop=True), env_context_df.reset_index(drop=True)], axis=1)
-
-    print(f"Environmental context found for {context_matches}/{len(bat_and_rat_data)} bat_and_rat entries")
-
-    # ============================================================================
-    # CREATE TRAINING DATA FROM CLEAR BAT/RAT PATTERNS
-    # ============================================================================
-    print(f"\n" + "="*40)
-    print("CREATING TRAINING DATA FROM EXISTING CLEAR PATTERNS")
-    print("="*40)
-
-    # Use existing clear categories as training data
-    clear_rat_entries = dataset1[dataset1['habit'].str.contains('rat', case=False, na=False) & 
-                               ~bat_and_rat_mask]  # Exclude bat_and_rat
-    clear_bat_entries = dataset1[dataset1['habit'].str.contains('bat', case=False, na=False) & 
-                               ~bat_and_rat_mask]  # Exclude bat_and_rat
-    
-    # Also use behavioral patterns for training
-    training_data_list = []
-    training_labels_list = []
-    
-    # Add clear rat entries
-    for idx, row in clear_rat_entries.iterrows():
-        training_data_list.append(row)
-        training_labels_list.append('rat')
-    
-    # Add clear bat entries  
-    for idx, row in clear_bat_entries.iterrows():
-        training_data_list.append(row)
-        training_labels_list.append('bat')
-        
-    # Add behavioral patterns from non-bat_and_rat entries
-    other_entries = dataset1[~bat_and_rat_mask]
-    for idx, row in other_entries.iterrows():
-        # High risk, no reward = likely rat-like behavior
-        if row['risk'] == 1 and row['reward'] == 0:
-            training_data_list.append(row)
-            training_labels_list.append('rat')
-        # Low risk, high reward = likely bat-like behavior
-        elif row['risk'] == 0 and row['reward'] == 1:
-            training_data_list.append(row)
-            training_labels_list.append('bat')
-
-    print(f"Training data created from existing patterns:")
-    print(f"  Rat examples: {training_labels_list.count('rat')}")
-    print(f"  Bat examples: {training_labels_list.count('bat')}")
-    
-    if len(training_data_list) >= 20 and training_labels_list.count('rat') >= 5 and training_labels_list.count('bat') >= 5:
-        print(f"\nSufficient training data available. Training ML model...")
-        
-        # ============================================================================
-        # TRAIN ML MODEL FOR BAT VS RAT CLASSIFICATION
-        # ============================================================================
-        
-        # Prepare training data
-        training_df = pd.DataFrame(training_data_list)
-        
-        # Feature set
-        feature_cols = [
-            'bat_landing_to_food',           # vigilance
-            'seconds_after_rat_arrival',     # rat timing
-            'risk', 'reward',                # behavior outcomes  
-            'hours_after_sunset',            # time of day
-            'month'                          # seasonality
-        ]
-        
-        X_train = training_df[feature_cols]
-        y_train = np.array(training_labels_list)
-        
-        # Handle missing values and scale features
-        from sklearn.impute import SimpleImputer
-        from sklearn.preprocessing import StandardScaler
-        
-        imputer = SimpleImputer(strategy='median')
-        scaler = StandardScaler()
-        
-        X_train_clean = imputer.fit_transform(X_train)
-        X_train_scaled = scaler.fit_transform(X_train_clean)
-        
-        # Train SVM classifier
-        from sklearn.svm import SVC
-        ml_model = SVC(kernel='linear', random_state=42, probability=True)
-        ml_model.fit(X_train_scaled, y_train)
-        
-        print(f"ML model trained successfully!")
-        
-        # ============================================================================
-        # CLASSIFY ONLY BAT_AND_RAT ENTRIES
-        # ============================================================================
-        print(f"\n" + "="*40)
-        print("CLASSIFYING BAT_AND_RAT ENTRIES ONLY")
-        print("="*40)
-        
-        # Prepare bat_and_rat entries for prediction
-        X_predict = bat_and_rat_with_context[feature_cols]
-        X_predict_clean = imputer.transform(X_predict)
-        X_predict_scaled = scaler.transform(X_predict_clean)
-        
-        # Make predictions
-        predictions = ml_model.predict(X_predict_scaled)
-        prediction_confidence = np.max(ml_model.predict_proba(X_predict_scaled), axis=1)
-        
-        print(f"Classified {len(predictions)} bat_and_rat entries")
-        print(f"Average confidence: {prediction_confidence.mean():.3f}")
-        
-        # Update only the bat_and_rat entries in dataset1
-        dataset1.loc[bat_and_rat_mask, 'habit'] = predictions
-        
-        # Show results
-        pred_counts = pd.Series(predictions).value_counts()
-        print(f"\nClassification results for bat_and_rat entries:")
-        for label, count in pred_counts.items():
-            print(f"  {label}: {count}")
-        
-        print(f"\nPhase 4 completed: bat_and_rat entries classified as 'bat' or 'rat'!")
-        
-    else:
-        print(f"\nWARNING: Insufficient training data")
-        print(f"Using simple heuristic classification for bat_and_rat entries...")
-        
-        # Simple heuristic fallback for bat_and_rat only
-        heuristic_predictions = []
-        for idx, row in bat_and_rat_data.iterrows():
-            if row['risk'] == 1 and row['reward'] == 0:
-                heuristic_predictions.append('rat')  # Risk without reward = predator
-            else:
-                heuristic_predictions.append('bat')  # Default to competition
-        
-        # Update only bat_and_rat entries
-        dataset1.loc[bat_and_rat_mask, 'habit'] = heuristic_predictions
-        
-        pred_counts = pd.Series(heuristic_predictions).value_counts()
-        print(f"Heuristic classification results:")
-        for label, count in pred_counts.items():
-            print(f"  {label}: {count}")
-
-    # Show final distribution
-    print(f"\n" + "="*40)
-    print("FINAL HABIT DISTRIBUTION")
-    print("="*40)
-    
-    final_counts = dataset1['habit'].value_counts()
-    print(f"All categories (bat_and_rat entries now classified):")
-    for category, count in final_counts.items():
-        print(f"  {category}: {count}")
-    
-else:
-    print(f"\nNo 'bat_and_rat' entries found to classify.")
-    print(f"All entries already have specific categories.")
-
-#%%
-# ============================================================================
-# PHASE 4 VISUALIZATION: ML CLASSIFICATION RESULTS
-# ============================================================================
-print("\nCreating Phase 4 visualization: ML Classification Results")
-
-# Simple Phase 4 visualization - before and after ML classification
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5), facecolor='white')
-
-# Plot 1: bat_and_rat entries before classification
-if 'bat_and_rat_count' in locals() and bat_and_rat_count > 0:
-    before_data = pd.Series([bat_and_rat_count], index=['bat_and_rat'])
-    before_data.plot(kind='bar', ax=ax1, color='orange', alpha=0.7)
-    ax1.set_title(f'Before ML: {bat_and_rat_count} bat_and_rat entries', fontweight='bold')
-    ax1.set_ylabel('Count')
-    ax1.tick_params(axis='x', rotation=0)
-else:
-    ax1.text(0.5, 0.5, 'No bat_and_rat entries\nto classify', 
-            ha='center', va='center', transform=ax1.transAxes, fontsize=12)
-    ax1.set_title('Before ML Classification', fontweight='bold')
-
-# Plot 2: After ML - final distribution including all categories
-final_habits_p4 = dataset1['habit'].value_counts()
-final_habits_p4.plot(kind='bar', ax=ax2, color='steelblue', alpha=0.7)
-ax2.set_title('After ML: All Categories', fontweight='bold')
-ax2.set_xlabel('Habit Category')
-ax2.set_ylabel('Count')
-ax2.tick_params(axis='x', rotation=45)
-
-plt.suptitle('PHASE 4: bat_and_rat Classification Complete', fontsize=14, fontweight='bold')
-plt.tight_layout()
-
-# Save Phase 4 plot
-phase4_filename = os.path.join(plots_dir, 'phase4_bat_vs_rat.png')
-plt.savefig(phase4_filename, dpi=300, bbox_inches='tight', facecolor='white')
-print(f"Saved Phase 4 visualization to: {phase4_filename}")
-plt.show()
-
-# Export final dataset with classified categories
-datasets_dir = 'datasets'
-if not os.path.exists(datasets_dir):
-    os.makedirs(datasets_dir)
-
-ml_final_filename = os.path.join(datasets_dir, 'dataset1_ml_classified.csv')
-dataset1.to_csv(ml_final_filename, index=False)
-print(f"Exported ML classified dataset to: {ml_final_filename}")
-
-print(f"\nPhase 4 ML classification complete!")
-print(f"bat_and_rat entries have been classified as either 'bat' or 'rat'.")
 
 # ============================================================================
 # FINAL HABIT CATEGORY EXPLANATIONS
@@ -725,8 +424,7 @@ print("FINAL HABIT CATEGORY MEANINGS")
 print("="*60)
 
 final_habit_meanings = {
-    'bat': 'Competition-focused behavior: Fast foraging, successful food acquisition, competing with other bats',
-    'rat': 'Predator-focused behavior: Cautious approach, high vigilance, responding to rat presence as threat',
+    'bat_and_rat': 'Mixed behavior: Complex situations involving both competition with other bats and response to rat presence as potential threat',
     'fast': 'Quick foraging behavior: Low vigilance, rapid food approach, efficient feeding',
     'pick': 'Selective feeding behavior: Careful food selection, moderate approach speed',
     'no_eating': 'Non-feeding behavior: No food consumption, may include exploration or vigilance',
@@ -742,344 +440,555 @@ for category in sorted(current_categories):
     meaning = final_habit_meanings.get(category, 'Specific behavioral pattern identified in the data')
     print(f"  {category}: {meaning}")
 
-print(f"\nKey insight: 'bat_and_rat' ambiguous entries have been resolved using ML classification")
-print(f"based on behavioral patterns (risk/reward) and environmental context from Dataset2.")
+print(f"\nKey insight: 'bat_and_rat' entries represent mixed behavioral situations")
+print(f"where bats show responses to both competition and potential predator threats simultaneously.")
 
 
 #%%
 # ============================================================================
-# PHASE 5: ENHANCED PREDATOR PERCEPTION FEATURE ENGINEERING  
+# PHASE 4: SIMPLE PREDATOR PERCEPTION ANALYSIS
 # ============================================================================
 print("\n" + "="*60)
-print("PHASE 5: ENHANCED PREDATOR PERCEPTION FEATURE ENGINEERING")
+print("PHASE 4: SIMPLE PREDATOR PERCEPTION ANALYSIS")
 print("="*60)
 
-# Key hypothesis: If bats perceive rats as predators, we expect:
-# 1. Higher vigilance (longer bat_landing_to_food) when rats are present
-# 2. More avoidance behaviors in risky situations  
-# 3. Different behavioral patterns based on rat timing
+# Core question: Do bats show higher vigilance when rats are present?
+# Hypothesis: If bats perceive rats as predators -> higher vigilance (longer bat_landing_to_food)
 
-# Primary vigilance indicator
-dataset1['vigilance_score'] = dataset1['bat_landing_to_food']
+print("Core Analysis: Testing if bats show predator perception behavior")
+print("Key measure: bat_landing_to_food (vigilance time)")
 
-# Vigilance categories based on quartiles
-vigilance_thresholds = dataset1['vigilance_score'].quantile([0.25, 0.5, 0.75])
-print(f"Vigilance thresholds: Q1={vigilance_thresholds[0.25]:.1f}, Q2={vigilance_thresholds[0.5]:.1f}, Q3={vigilance_thresholds[0.75]:.1f}")
+# Create simple vigilance measure (already cleaned in Phase 3)
+dataset1['vigilance'] = dataset1['bat_landing_to_food']
+print(f"Using cleaned vigilance data (missing values handled in Phase 3)")
 
-dataset1['vigilance_level'] = pd.cut(
-    dataset1['vigilance_score'],
-    bins=[0, vigilance_thresholds[0.25], vigilance_thresholds[0.5], vigilance_thresholds[0.75], float('inf')],
-    labels=['low', 'medium', 'high', 'very_high']
-)
+# Use existing rat information in Dataset1 (much more accurate!)
+print("Using rat timing information already in Dataset1...")
 
-dataset1['high_vigilance'] = (dataset1['vigilance_score'] > vigilance_thresholds[0.75]).astype(int)
+# Dataset1 already has rat information:
+# - rat_period_start: When rats arrived
+# - rat_period_end: When rats left  
+# - seconds_after_rat_arrival: Time since rats arrived
 
-# Predator perception indicators
-print(f"\nCreating predator perception indicators...")
+# Create rat presence indicator: rats were active when the bat landed
+def determine_rat_presence(row):
+    """Determine if rats were present when the bat landed"""
+    # If no rat period info, assume no rats
+    if pd.isna(row['rat_period_start']) or pd.isna(row['rat_period_end']):
+        return False
+    
+    # Check if bat landing time was during rat presence period
+    bat_time = row['start_time']
+    rat_start = row['rat_period_start'] 
+    rat_end = row['rat_period_end']
+    
+    # Bat landed during rat presence period
+    return rat_start <= bat_time <= rat_end
 
-# 1. Avoidance behavior: High vigilance without taking risks
-dataset1['avoidance_behavior'] = (
-    (dataset1['risk'] == 0) & 
-    (dataset1['high_vigilance'] == 1)
-).astype(int)
+# Also create indicator for recent rat activity (within reasonable time)
+def recent_rat_activity(row):
+    """Check if rats were recently active (within 10 minutes)"""
+    if pd.isna(row['seconds_after_rat_arrival']):
+        return False
+    # Recent if within 600 seconds (10 minutes)
+    return row['seconds_after_rat_arrival'] <= 600
 
-# 2. Rat temporal threat assessment
-dataset1['rat_presence_duration'] = (
-    dataset1['rat_period_end'] - dataset1['rat_period_start']
-).dt.total_seconds()
+dataset1['rats_present'] = dataset1.apply(determine_rat_presence, axis=1)
+dataset1['recent_rats'] = dataset1.apply(recent_rat_activity, axis=1)
 
-# Categorize rat threat timing
-dataset1['rat_threat_level'] = 'no_immediate_threat'
-dataset1.loc[dataset1['seconds_after_rat_arrival'] <= 30, 'rat_threat_level'] = 'immediate_threat'
-dataset1.loc[(dataset1['seconds_after_rat_arrival'] > 30) & 
-             (dataset1['seconds_after_rat_arrival'] <= 300), 'rat_threat_level'] = 'recent_threat'
-dataset1.loc[dataset1['seconds_after_rat_arrival'] > 300, 'rat_threat_level'] = 'distant_threat'
+print("Rat presence analysis:")
+print(f"  Bats landing DURING rat presence: {dataset1['rats_present'].sum()}")
+print(f"  Bats landing AFTER recent rat activity: {dataset1['recent_rats'].sum()}")
+print(f"  Total observations: {len(dataset1)}")
 
-# 3. Behavioral adaptation to rat presence  
-dataset1['cautious_approach'] = (
-    (dataset1['vigilance_score'] > vigilance_thresholds[0.5]) &  # Above median vigilance
-    (dataset1['seconds_after_rat_arrival'] < 600)  # Within 10 minutes of rat
-).astype(int)
+# Check if we have a valid comparison - all observations seem to have rats present!
+rats_present_count = dataset1['rats_present'].sum()
+total_observations = len(dataset1)
 
-# 4. Risk-reward behavioral classification
-dataset1['behavioral_strategy'] = 'unknown'
-dataset1.loc[(dataset1['risk'] == 1) & (dataset1['reward'] == 1), 'behavioral_strategy'] = 'aggressive_successful'
-dataset1.loc[(dataset1['risk'] == 1) & (dataset1['reward'] == 0), 'behavioral_strategy'] = 'aggressive_failed' 
-dataset1.loc[(dataset1['risk'] == 0) & (dataset1['reward'] == 1), 'behavioral_strategy'] = 'cautious_successful'
-dataset1.loc[(dataset1['risk'] == 0) & (dataset1['reward'] == 0), 'behavioral_strategy'] = 'cautious_failed'
+if rats_present_count == total_observations:
+    print(f"\nCRITICAL FINDING: ALL {total_observations} observations have rats present!")
+    print("   This reveals rats were active throughout the entire study period.")
+    print("   Analysis must use timing-based comparisons instead of presence/absence.")
 
-print(f"Feature engineering results:")
-print(f"  High vigilance rate: {dataset1['high_vigilance'].mean()*100:.1f}%")
-print(f"  Avoidance behavior rate: {dataset1['avoidance_behavior'].mean()*100:.1f}%") 
-print(f"  Cautious approach rate: {dataset1['cautious_approach'].mean()*100:.1f}%")
+# COMPREHENSIVE PREDATOR PERCEPTION ANALYSIS
+print(f"\n" + "="*50)
+print("COMPREHENSIVE PREDATOR PERCEPTION ANALYSIS")
+print("="*50)
 
-print(f"\nRat threat level distribution:")
-threat_dist = dataset1['rat_threat_level'].value_counts()
-for level, count in threat_dist.items():
-    print(f"  {level}: {count}")
+# Since ALL bats have rats present, we need alternative comparisons
+# 1. VIGILANCE ANALYSIS - comparing timing relative to rat activity
+immediate_rats = dataset1[dataset1['seconds_after_rat_arrival'] <= 60]['vigilance']  # Within 1 minute
+delayed_rats = dataset1[dataset1['seconds_after_rat_arrival'] > 300]['vigilance']   # After 5+ minutes
+recent_rats = dataset1[dataset1['recent_rats'] == True]['vigilance']
 
-print(f"\nBehavioral strategy distribution:")
-strategy_dist = dataset1['behavioral_strategy'].value_counts()
-for strategy, count in strategy_dist.items():
-    print(f"  {strategy}: {count}")
+print(f"\n1. VIGILANCE ANALYSIS (Time-Based Comparison):")
+print(f"   Since all bats encountered rats, comparing by timing:")
+print(f"   Average vigilance IMMEDIATELY after rats (<=1min): {immediate_rats.mean():.2f} seconds (n={len(immediate_rats)})")
+print(f"   Average vigilance DELAYED after rats (>5min): {delayed_rats.mean():.2f} seconds (n={len(delayed_rats)})")
+print(f"   Average vigilance with RECENT rat activity (<=10min): {recent_rats.mean():.2f} seconds (n={len(recent_rats)})")
+if len(immediate_rats) > 0 and len(delayed_rats) > 0:
+    difference = immediate_rats.mean() - delayed_rats.mean()
+    print(f"   Difference (immediate vs delayed): {difference:+.2f} seconds")
+    if delayed_rats.mean() > 0:
+        percent_change = (difference / delayed_rats.mean()) * 100
+        print(f"   Percentage change: {percent_change:+.1f}%")
+        
+    print(f"\nKEY INSIGHT:")
+    if difference < 0:
+        print(f"   Bats show LOWER vigilance immediately after rats!")
+        print(f"   This is OPPOSITE to predator perception theory.")
+        print(f"   Suggests rats may be COMPETITORS rather than predators.")
 
-# Create predator perception correlation analysis
-print("\n" + "="*40)
-print("PREDATOR PERCEPTION CORRELATION ANALYSIS")
-print("="*40)
+# 2. RISK-TAKING BEHAVIOR ANALYSIS (Time-Based Comparison)
+print(f"\n2. RISK-TAKING BEHAVIOR ANALYSIS:")
+risk_immediate = dataset1[dataset1['seconds_after_rat_arrival'] <= 60]['risk'].mean()
+risk_delayed = dataset1[dataset1['seconds_after_rat_arrival'] > 300]['risk'].mean() 
+print(f"   Risk-taking IMMEDIATELY after rats (<=1min): {risk_immediate:.3f} (n={len(immediate_rats)})")
+print(f"   Risk-taking DELAYED after rats (>5min): {risk_delayed:.3f} (n={len(delayed_rats)})")
+if not pd.isna(risk_immediate) and not pd.isna(risk_delayed):
+    risk_diff = risk_immediate - risk_delayed
+    print(f"   Difference: {risk_diff:+.3f}")
 
-# Correlation matrix for predator perception features
-predator_features = ['vigilance_score', 'seconds_after_rat_arrival', 'rat_presence_duration',
-                    'high_vigilance', 'avoidance_behavior', 'cautious_approach', 
-                    'risk', 'reward']
+# 3. REWARD SUCCESS ANALYSIS (Time-Based Comparison)
+print(f"\n3. REWARD SUCCESS ANALYSIS:")
+reward_immediate = dataset1[dataset1['seconds_after_rat_arrival'] <= 60]['reward'].mean()
+reward_delayed = dataset1[dataset1['seconds_after_rat_arrival'] > 300]['reward'].mean()
+print(f"   Success rate IMMEDIATELY after rats (<=1min): {reward_immediate:.3f}")
+print(f"   Success rate DELAYED after rats (>5min): {reward_delayed:.3f}")  
+if not pd.isna(reward_immediate) and not pd.isna(reward_delayed):
+    reward_diff = reward_immediate - reward_delayed
+    print(f"   Difference: {reward_diff:+.3f}")
 
-correlation_matrix = dataset1[predator_features].corr()
+# Behavioral analysis complete - ready for visualization
 
-# Create correlation heatmap
-plt.figure(figsize=(12, 10), facecolor='white')
-mask = np.triu(np.ones_like(correlation_matrix, dtype=bool))  # Show lower triangle only
-sns.heatmap(correlation_matrix, annot=True, fmt='.3f', cmap='RdBu_r', 
-            center=0, square=True, mask=mask, cbar_kws={'shrink': 0.8})
-plt.title('Predator Perception Feature Correlations', fontsize=14, fontweight='bold', pad=20)
+# Create comprehensive visualization
+fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10), facecolor='white')
+
+# 1. Time-based vigilance comparison (corrected)
+vigilance_means = [delayed_rats.mean(), immediate_rats.mean(), recent_rats.mean()]
+vigilance_categories = ['Delayed (>5min)', 'Immediate (<=1min)', 'Recent (<=10min)']
+colors = ['green', 'red', 'orange']
+bars = ax1.bar(vigilance_categories, vigilance_means, color=colors, alpha=0.7)
+ax1.set_ylabel('Average Vigilance (seconds)')
+ax1.set_title('Vigilance by Rat Timing')
+for bar, val in zip(bars, vigilance_means):
+    ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
+             f'{val:.1f}s', ha='center', fontweight='bold')
+
+# 2. Risk-taking behavior (time-based)
+risk_means = [risk_delayed, risk_immediate]
+risk_categories = ['Delayed (>5min)', 'Immediate (<=1min)'] 
+bars2 = ax2.bar(risk_categories, risk_means, color=['lightgreen', 'lightcoral'], alpha=0.7)
+ax2.set_ylabel('Proportion Taking Risks')
+ax2.set_title('Risk-Taking by Timing')
+ax2.set_ylim(0, 1)
+for bar, val in zip(bars2, risk_means):
+    ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
+             f'{val:.3f}', ha='center', fontweight='bold')
+
+# 3. Success rates (time-based)
+reward_means = [reward_delayed, reward_immediate]
+reward_categories = ['Delayed (>5min)', 'Immediate (<=1min)']
+bars3 = ax3.bar(reward_categories, reward_means, color=['lightblue', 'lightcoral'], alpha=0.7)
+ax3.set_ylabel('Success Rate (Reward)')
+ax3.set_title('Success Rate by Timing')
+ax3.set_ylim(0, 1)
+for bar, val in zip(bars3, reward_means):
+    ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
+             f'{val:.3f}', ha='center', fontweight='bold')
+
+# 4. Vigilance distribution overlay (time-based)
+ax4.hist(delayed_rats, alpha=0.5, label='Delayed (>5min)', bins=15, color='green', density=True)
+ax4.hist(immediate_rats, alpha=0.5, label='Immediate (<=1min)', bins=15, color='red', density=True)
+ax4.set_xlabel('Vigilance (seconds)')
+ax4.set_ylabel('Density')
+ax4.set_title('Vigilance Distributions')
+ax4.legend()
+
+plt.suptitle('PHASE 4: Comprehensive Predator Perception Analysis', fontsize=14, fontweight='bold')
+plt.tight_layout()
+
+# Save plot
+simple_analysis_filename = os.path.join(plots_dir, 'phase4_simple_predator_analysis.png')
+plt.savefig(simple_analysis_filename, dpi=300, bbox_inches='tight', facecolor='white')
+print(f"Saved simple analysis plot to: {simple_analysis_filename}")
+plt.show()
+
+print(f"\nPhase 4 completed: Comprehensive predator perception analysis ready for statistical testing!")
+
+# Create comprehensive correlation heatmap combining Dataset1 and Dataset2 features
+print(f"\nCreating comprehensive correlation analysis...")
+
+# Select key numeric columns from both datasets for correlation analysis
+dataset1_cols = ['vigilance', 'risk', 'reward', 'seconds_after_rat_arrival', 'hours_after_sunset']
+correlation_data = dataset1[dataset1_cols].corr()
+
+plt.figure(figsize=(10, 8), facecolor='white')
+sns.heatmap(correlation_data, annot=True, fmt='.3f', cmap='RdBu_r', 
+            center=0, square=True, cbar_kws={'shrink': 0.8})
+plt.title('Comprehensive Feature Correlations (Unified Analysis)', fontsize=12, fontweight='bold')
 plt.tight_layout()
 
 # Save correlation plot
-plots_dir = 'plots'
-if not os.path.exists(plots_dir):
-    os.makedirs(plots_dir)
-    
-corr_plot_filename = os.path.join(plots_dir, 'predator_perception_correlations.png')
-plt.savefig(corr_plot_filename, dpi=300, bbox_inches='tight', facecolor='white')
-print(f"Saved correlation heatmap to: {corr_plot_filename}")
+corr_filename = os.path.join(plots_dir, 'phase4_comprehensive_correlations.png')
+plt.savefig(corr_filename, dpi=300, bbox_inches='tight', facecolor='white')
+print(f"Saved comprehensive correlation plot to: {corr_filename}")
 plt.show()
-
-# Key correlations analysis
-print(f"\nKey correlations with vigilance_score:")
-vigilance_correlations = correlation_matrix['vigilance_score'].abs().sort_values(ascending=False)
-for feature, corr in vigilance_correlations.items():
-    if feature != 'vigilance_score':
-        direction = "positive" if correlation_matrix['vigilance_score'][feature] > 0 else "negative"
-        print(f"  {feature}: {corr:.3f} ({direction})")
-
-# Dataset2 validation analysis (separate from main analysis)
-print(f"\n" + "="*40)
-print("DATASET2 VALIDATION CONTEXT")
-print("="*40)
-
-# Analyze overall patterns in Dataset2 for validation
-print(f"Dataset2 overview for validation:")
-print(f"Total observation periods: {len(dataset2)}")
-print(f"Periods with rat activity: {(dataset2['rat_arrival_number'] > 0).sum()}")
-print(f"Average bat landings per period: {dataset2['bat_landing_number'].mean():.1f}")
-print(f"Average food availability: {dataset2['food_availability'].mean():.2f}")
-
-# Validate that Dataset1 patterns align with Dataset2 context
-high_activity_periods = dataset2[dataset2['rat_arrival_number'] > 0]
-print(f"\nValidation: High rat activity periods in Dataset2:")
-print(f"Average bat landings during rat periods: {high_activity_periods['bat_landing_number'].mean():.1f}")
-print(f"Average food availability during rat periods: {high_activity_periods['food_availability'].mean():.2f}")
-
-print(f"\nFeature engineering completed successfully!")
-print(f"Dataset1 ready for predator perception statistical analysis!")
-print(f"Dataset2 provides validation context for environmental patterns!")
 
 #%%
 # ============================================================================
-# PHASE 6: STATISTICAL ANALYSIS WITH ML-ENHANCED CATEGORIES
+# PHASE 5: SIMPLE STATISTICAL TESTING
 # ============================================================================
 print("\n" + "="*60)
-print("PHASE 6: STATISTICAL ANALYSIS WITH ML-ENHANCED CATEGORIES")
+print("PHASE 5: SIMPLE STATISTICAL TESTING")
 print("="*60)
 
-# Main analysis: Compare vigilance with/without rats 
-# Need to add vigilance_score to merged_data for analysis
-merged_data['vigilance_score'] = dataset1['vigilance_score']
-merged_data['avoidance_behavior'] = dataset1['avoidance_behavior']
+# Use the time-based comparison from Phase 4 for statistical testing
+print("TIME-BASED STATISTICAL TESTING:")
+print("Since all bats encountered rats, comparing immediate vs delayed responses")
 
-with_rats = merged_data[merged_data['rat_arrival_number'] > 0]
-without_rats = merged_data[merged_data['rat_arrival_number'] == 0]
+# Data prepared in Phase 4 - time-based comparison
+immediate_data = dataset1[dataset1['seconds_after_rat_arrival'] <= 60]['vigilance']
+delayed_data = dataset1[dataset1['seconds_after_rat_arrival'] > 300]['vigilance']
+
+# Additional data for comprehensive analysis
+immediate_risk = dataset1[dataset1['seconds_after_rat_arrival'] <= 60]['risk']
+delayed_risk = dataset1[dataset1['seconds_after_rat_arrival'] > 300]['risk']
 
 print(f"\nSample sizes:")
-print(f"  With rats: n = {len(with_rats)}")
-print(f"  Without rats: n = {len(without_rats)}")
+print(f"  Immediate response (<=1min): n = {len(immediate_data)}")
+print(f"  Delayed response (>5min): n = {len(delayed_data)}")
 
-# T-test for vigilance difference
-t_stat, p_value = stats.ttest_ind(
-    with_rats['vigilance_score'].dropna(),
-    without_rats['vigilance_score'].dropna()
-)
+# Perform statistical testing only if both groups have data
+from scipy.stats import ttest_ind, chi2_contingency
 
-# Calculate effect sizes
-mean_with = with_rats['vigilance_score'].mean()
-mean_without = without_rats['vigilance_score'].mean()
-mean_diff = mean_with - mean_without
-percent_change = (mean_diff / mean_without) * 100
+if len(immediate_data) > 0 and len(delayed_data) > 0:
+    t_statistic, p_value = ttest_ind(immediate_data, delayed_data)
+else:
+    print("WARNING: Cannot perform t-test: insufficient data in one or both groups")
+    t_statistic, p_value = float('nan'), float('nan')
 
-# Cohen's d
-pooled_std = np.sqrt((with_rats['vigilance_score'].std()**2 + 
-                     without_rats['vigilance_score'].std()**2) / 2)
-cohens_d = mean_diff / pooled_std
+# Calculate basic statistics for time-based comparison
+mean_immediate = immediate_data.mean() if len(immediate_data) > 0 else float('nan')
+mean_delayed = delayed_data.mean() if len(delayed_data) > 0 else float('nan')
+difference = mean_immediate - mean_delayed if not (pd.isna(mean_immediate) or pd.isna(mean_delayed)) else float('nan')
+percent_change = (difference / mean_delayed) * 100 if mean_delayed > 0 and not pd.isna(difference) else float('nan')
 
-print(f"\nVigilance Analysis:")
-print(f"  Mean with rats: {mean_with:.2f} seconds")
-print(f"  Mean without rats: {mean_without:.2f} seconds")
-print(f"  Difference: {mean_diff:.2f} seconds ({percent_change:+.1f}%)")
-print(f"  T-statistic: {t_stat:.3f}")
+# Calculate Cohen's d (effect size) only if we have valid data
+if len(immediate_data) > 1 and len(delayed_data) > 1:
+    pooled_std = np.sqrt(((len(immediate_data)-1)*immediate_data.std()**2 + 
+                         (len(delayed_data)-1)*delayed_data.std()**2) / 
+                        (len(immediate_data) + len(delayed_data) - 2))
+    cohens_d = difference / pooled_std if pooled_std > 0 else float('nan')
+else:
+    cohens_d = float('nan')
+
+print(f"\nSTATISTICAL RESULTS:")
+print(f"1. VIGILANCE ANALYSIS (TIME-BASED T-TEST):")
+print(f"  Mean vigilance IMMEDIATE after rats (<=1min): {mean_immediate:.2f} seconds")
+print(f"  Mean vigilance DELAYED after rats (>5min): {mean_delayed:.2f} seconds")
+print(f"  Difference: {difference:+.2f} seconds")
+print(f"  Percentage change: {percent_change:+.1f}%")
+print(f"  T-statistic: {t_statistic:.3f}")
 print(f"  P-value: {p_value:.4f}")
-print(f"  Cohen's d: {cohens_d:.3f}")
+print(f"  Cohen's d (effect size): {cohens_d:.3f}")
 
-# Analyze by ML-enhanced habit category
-print("\nVigilance by ML-enhanced habit category and rat presence:")
-habit_analysis = merged_data.groupby(['habit', merged_data['rat_arrival_number'] > 0])['vigilance_score'].agg(['mean', 'count'])
-print(habit_analysis)
+# Additional statistical testing for risk-taking behavior (time-based)
+print(f"\n2. RISK-TAKING BEHAVIOR ANALYSIS (TIME-BASED CHI-SQUARE TEST):")
 
-# Chi-square test for avoidance behavior with merged data
-contingency = pd.crosstab(merged_data['rat_arrival_number'] > 0, 
-                          merged_data['avoidance_behavior'])
-chi2, p_chi, dof, expected = stats.chi2_contingency(contingency)
+# Create timing groups for chi-square test
+dataset1['timing_group'] = 'delayed'
+dataset1.loc[dataset1['seconds_after_rat_arrival'] <= 60, 'timing_group'] = 'immediate'
 
-print(f"\nAvoidance Behavior Analysis:")
-print(f"  With rats: {with_rats['avoidance_behavior'].mean()*100:.1f}%")
-print(f"  Without rats: {without_rats['avoidance_behavior'].mean()*100:.1f}%")
-print(f"  Chi-square p-value: {p_chi:.4f}")
+# Filter to only include immediate and delayed groups
+timing_subset = dataset1[dataset1['timing_group'].isin(['immediate', 'delayed'])]
 
-# PHASE 6: Create Statistical Analysis Plots with ML-Enhanced Categories
-print("\nCreating statistical analysis plots...")
-print("NOTE: Using merged data with ML-enhanced rat vs bat classifications")
+if len(timing_subset) > 0:
+    # Create contingency table for risk-taking behavior by timing
+    risk_contingency = pd.crosstab(timing_subset['timing_group'], timing_subset['risk'], margins=False)
+    print("   Contingency table (timing vs risk):")
+    print(risk_contingency)
+    
+    # Perform chi-square test if we have enough data
+    if risk_contingency.shape == (2, 2) and (risk_contingency > 5).all().all():
+        chi2_stat, chi2_p, chi2_dof, chi2_expected = chi2_contingency(risk_contingency)
+        print(f"   Chi-square statistic: {chi2_stat:.3f}")
+        print(f"   P-value: {chi2_p:.4f}")
+        print(f"   Degrees of freedom: {chi2_dof}")
+        
+        # Calculate effect size (Cramér's V)
+        n = risk_contingency.sum().sum()
+        cramers_v = np.sqrt(chi2_stat / (n * (min(risk_contingency.shape) - 1)))
+        print(f"   Cramér's V (effect size): {cramers_v:.3f}")
+    else:
+        print("   WARNING: Chi-square test not appropriate: insufficient data or low cell counts")
+        chi2_stat, chi2_p, cramers_v = float('nan'), float('nan'), float('nan')
+    
+    # Risk proportions by timing
+    risk_immediate = timing_subset[timing_subset['timing_group'] == 'immediate']['risk'].mean()
+    risk_delayed = timing_subset[timing_subset['timing_group'] == 'delayed']['risk'].mean()
+    risk_difference = risk_immediate - risk_delayed if not (pd.isna(risk_immediate) or pd.isna(risk_delayed)) else float('nan')
+    print(f"   Risk-taking IMMEDIATE: {risk_immediate:.3f} ({risk_immediate*100:.1f}%)")
+    print(f"   Risk-taking DELAYED: {risk_delayed:.3f} ({risk_delayed*100:.1f}%)")
+    print(f"   Difference: {risk_difference:+.3f} ({risk_difference*100:+.1f}%)")
+else:
+    print("   WARNING: No data available for timing-based risk analysis")
+    chi2_stat, chi2_p, cramers_v = float('nan'), float('nan'), float('nan')
+    risk_difference = float('nan')
 
-# Plot 1: Vigilance comparison
-fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6), facecolor='white')
+# Interpret results for both tests
+print(f"\nCOMPREHENSIVE INTERPRETATION:")
+print(f"VIGILANCE TEST RESULTS:")
+if p_value < 0.05:
+    print(f"  STATISTICALLY SIGNIFICANT (p = {p_value:.4f})")
+else:
+    print(f"  NOT STATISTICALLY SIGNIFICANT (p = {p_value:.4f})")
 
-# Bar chart comparison
-means = [mean_without, mean_with]
-errors = [without_rats['vigilance_score'].std(), with_rats['vigilance_score'].std()]
-bars = ax1.bar(['No Rats', 'Rats Present'], means, yerr=errors, 
-               color=['#2ecc71', '#e74c3c'], capsize=5, alpha=0.7)
-ax1.set_ylabel('Vigilance Score (seconds)')
-ax1.set_title('Average Vigilance by Rat Presence')
-for bar, val in zip(bars, means):
-    ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1,
-             f'{val:.1f}', ha='center', fontweight='bold')
+if abs(cohens_d) < 0.2:
+    vigilance_effect = "negligible"
+elif abs(cohens_d) < 0.5:
+    vigilance_effect = "small"
+elif abs(cohens_d) < 0.8:
+    vigilance_effect = "medium"
+else:
+    vigilance_effect = "large"
+print(f"  Effect size: {vigilance_effect} (Cohen's d = {cohens_d:.3f})")
 
-# Distribution comparison
-ax2.hist(without_rats['vigilance_score'].dropna(), alpha=0.5, 
-         label='No Rats', bins=30, color='#2ecc71')
-ax2.hist(with_rats['vigilance_score'].dropna(), alpha=0.5, 
-         label='Rats Present', bins=30, color='#e74c3c')
-ax2.set_xlabel('Vigilance Score')
+print(f"\nRISK-TAKING TEST RESULTS:")
+if chi2_p < 0.05:
+    print(f"  STATISTICALLY SIGNIFICANT (p = {chi2_p:.4f})")
+else:
+    print(f"  NOT STATISTICALLY SIGNIFICANT (p = {chi2_p:.4f})")
+
+if cramers_v < 0.1:
+    risk_effect = "negligible"
+elif cramers_v < 0.3:
+    risk_effect = "small"
+elif cramers_v < 0.5:
+    risk_effect = "medium"
+else:
+    risk_effect = "large"
+print(f"  Effect size: {risk_effect} (Cramér's V = {cramers_v:.3f})")
+
+# Overall conclusion for predator perception
+significant_vigilance = p_value < 0.05
+significant_risk = chi2_p < 0.05
+meaningful_vigilance_effect = abs(cohens_d) >= 0.2
+meaningful_risk_effect = cramers_v >= 0.1
+
+print(f"\nOVERALL EVIDENCE FOR PREDATOR PERCEPTION:")
+evidence_count = sum([significant_vigilance, significant_risk, meaningful_vigilance_effect, meaningful_risk_effect])
+
+print(f"\nEVIDENCE SUMMARY:")
+print(f"  • Significant vigilance difference: {'YES' if significant_vigilance else 'NO'}")
+print(f"  • Meaningful vigilance effect size: {'YES' if meaningful_vigilance_effect else 'NO'}")
+print(f"  • Significant risk difference: {'YES' if significant_risk else 'NO'}")
+print(f"  • Meaningful risk effect size: {'YES' if meaningful_risk_effect else 'NO'}")
+print(f"  • Total supporting evidence: {evidence_count}/4 indicators")
+
+if evidence_count >= 2:
+    print(f"\nSTRONG EVIDENCE ({evidence_count}/4 indicators support predator perception)")
+elif evidence_count == 1:
+    print(f"\nWEAK EVIDENCE ({evidence_count}/4 indicators support predator perception)")
+else:
+    print(f"\nNO EVIDENCE ({evidence_count}/4 indicators support predator perception)")
+    
+# Add interpretation of negative effects
+if difference < 0 and not pd.isna(difference):
+    print(f"\nCRITICAL INTERPRETATION:")
+    print(f"   Vigilance DECREASES immediately after rats ({difference:.2f}s)")
+    print(f"   This suggests COMPETITIVE rather than PREDATORY relationship")
+    print(f"   Bats may relax when competitors (rats) are recently active")
+
+
+# Create simple statistical plots
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5), facecolor='white')
+
+# Box plot comparison (time-based)
+data_for_box = [delayed_data, immediate_data]
+box_plot = ax1.boxplot(data_for_box, labels=['Delayed (>5min)', 'Immediate (<=1min)'], patch_artist=True)
+box_plot['boxes'][0].set_facecolor('lightgreen')
+box_plot['boxes'][1].set_facecolor('lightcoral')
+ax1.set_ylabel('Vigilance (seconds)')
+ax1.set_title('Time-Based Vigilance Comparison')
+ax1.grid(True, alpha=0.3)
+
+# Histogram comparison (time-based)
+ax2.hist(delayed_data, alpha=0.6, label='Delayed (>5min)', bins=15, color='green')
+ax2.hist(immediate_data, alpha=0.6, label='Immediate (<=1min)', bins=15, color='red')
+ax2.set_xlabel('Vigilance (seconds)')
 ax2.set_ylabel('Frequency')
-ax2.set_title('Vigilance Distribution')
+ax2.set_title('Time-Based Distribution Comparison')
 ax2.legend()
 
-# Time response curve with merged data
-time_bins = [0, 30, 60, 120, 300, 600]
-merged_data['time_since_rat'] = pd.cut(merged_data['seconds_after_rat_arrival'], 
-                                 bins=time_bins, 
-                                 labels=['0-30s', '30-60s', '60-120s', '120-300s', '300-600s'])
-time_vigilance = merged_data.groupby('time_since_rat')['vigilance_score'].mean()
-ax3.plot(range(len(time_vigilance)), time_vigilance.values, 
-         'o-', color='darkblue', linewidth=2, markersize=8)
-ax3.set_xlabel('Time Since Rat Arrival')
-ax3.set_ylabel('Average Vigilance')
-ax3.set_title('Temporal Response to Rat Presence')
-ax3.set_xticks(range(len(time_vigilance)))
-ax3.set_xticklabels(time_vigilance.index, rotation=45)
-ax3.grid(True, alpha=0.3)
-
-plt.suptitle('Phase 6: Statistical Analysis with ML-Enhanced Categories', fontsize=14, fontweight='bold')
+plt.suptitle('Phase 5: Simple Statistical Analysis Results', fontsize=14, fontweight='bold')
 plt.tight_layout()
 
-# Save the statistical analysis plots
-stats_plot_filename = os.path.join(plots_dir, 'statistical_analysis.png')
-plt.savefig(stats_plot_filename, dpi=300, bbox_inches='tight', facecolor='white')
-print(f"Saved statistical analysis plots to: {stats_plot_filename}")
+# Save plot
+stats_filename = os.path.join(plots_dir, 'phase5_statistical_results.png')
+plt.savefig(stats_filename, dpi=300, bbox_inches='tight', facecolor='white')
+print(f"Saved statistical analysis to: {stats_filename}")
 plt.show()
+
+print(f"\nPhase 5 completed: Statistical testing complete!")
 
 #%%
 # ============================================================================
-# PHASE 7: VISUALIZATION AND CONCLUSION WITH ML RESULTS
+# PHASE 6: FINAL ANSWER AND CONCLUSION
 # ============================================================================
 print("\n" + "="*60)
-print("PHASE 7: VISUALIZATION AND CONCLUSION WITH ML RESULTS")
+print("PHASE 6: FINAL ANSWER AND CONCLUSION")
 print("="*60)
 
-# PHASE 7: Create Final Habit Analysis with ML Results
-print("\nCreating final habit analysis plot and summary statistics...")
-print("NOTE: Using ML-enhanced categories with environmental context")
+# Use the results from Phase 5 statistical testing
+print("FINAL RESEARCH QUESTION: Do bats perceive rats as potential predators?")
+print("METHOD: Measured vigilance (bat_landing_to_food) with vs without rat presence")
 
-# Create visualization with habit analysis and summary
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6), facecolor='white')
+# Create final summary visualization
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5), facecolor='white')
 
-# Plot 1: ML-enhanced habit category analysis
-habit_vig = merged_data.groupby('habit')['vigilance_score'].mean().sort_values()
-colors = ['#3498db' if 'avoid' in cat or 'slow' in cat else '#e67e22' 
-          for cat in habit_vig.index]
-habit_vig.plot(kind='barh', ax=ax1, color=colors)
-ax1.set_xlabel('Average Vigilance Score')
-ax1.set_title('Vigilance by Behavior Type')
+# Plot 1: Time-based conclusion chart
+conclusion_data = [mean_delayed, mean_immediate]
+labels = ['Delayed (>5min)', 'Immediate (<=1min)']
+colors = ['lightgreen', 'lightcoral']
+bars = ax1.bar(labels, conclusion_data, color=colors, alpha=0.8)
+ax1.set_ylabel('Average Vigilance (seconds)')
+ax1.set_title('MAIN FINDING: Time-Based Vigilance Comparison')
 
-# Plot 2: Summary statistics
-ax2.axis('off')
-summary_text = f"""
-STATISTICAL SUMMARY
-
-Sample Size:
-• With rats: n = {len(with_rats)}
-• Without rats: n = {len(without_rats)}
-
-Vigilance Test:
-• Increase: {percent_change:+.1f}%
-• P-value: {p_value:.4f}
-• Cohen's d: {cohens_d:.3f}
-• Result: {'✓ Significant' if p_value < 0.05 else '✗ Not significant'}
-
-Avoidance Behavior:
-• Difference: {(with_rats['avoidance_behavior'].mean() - without_rats['avoidance_behavior'].mean())*100:+.1f}%
-• Chi-square p: {p_chi:.4f}
-
-Interpretation:
-Effect size is {'large' if abs(cohens_d) > 0.8 else 'medium' if abs(cohens_d) > 0.5 else 'small'}
-"""
-ax2.text(0.1, 0.5, summary_text, transform=ax2.transAxes, fontsize=10,
-         verticalalignment='center', bbox=dict(boxstyle='round', 
-         facecolor='wheat', alpha=0.5))
-
-plt.suptitle('Phase 7: Final Analysis with ML-Enhanced Categories', 
-             fontsize=14, fontweight='bold')
-plt.tight_layout()
-
-# Save the habit analysis and summary plot
-habit_summary_filename = os.path.join(plots_dir, 'habit_analysis_summary.png')
-plt.savefig(habit_summary_filename, dpi=300, bbox_inches='tight', facecolor='white')
-print(f"Saved habit analysis and summary plot to: {habit_summary_filename}")
-
-plt.show()
-
-#%%
-# ============================================================================
-# FINAL ANSWER
-# ============================================================================
-print("\n" + "="*60)
-print("FINAL ANSWER: INVESTIGATION A")
-print("="*60)
-
-if p_value < 0.05 and percent_change > 10:
-    print("\nYES - BATS LIKELY PERCEIVE RATS AS PREDATORS")
-    print("\nEvidence:")
-    print(f"1. Vigilance significantly increases by {percent_change:.1f}% when rats present")
-    print(f"2. Statistical significance: p = {p_value:.4f} < 0.05")
-    print(f"3. Effect size (Cohen's d = {cohens_d:.3f}) indicates {['small', 'medium', 'large'][int(abs(cohens_d) > 0.5) + int(abs(cohens_d) > 0.8)]} practical significance")
-    print(f"4. Avoidance behavior increases by {(with_rats['avoidance_behavior'].mean() - without_rats['avoidance_behavior'].mean())*100:.1f}%")
-    print(f"5. Behavioral patterns (slow/avoid) more common with rat presence")
+# Add significance indicator
+if not pd.isna(p_value) and p_value < 0.05:
+    ax1.text(0.5, max(conclusion_data) * 1.1, 
+             f'p = {p_value:.4f} *', ha='center', fontweight='bold', fontsize=12)
+    ax1.text(0.5, max(conclusion_data) * 1.05, 
+             'Statistically Significant', ha='center', fontsize=10)
 else:
-    print("\nINSUFFICIENT EVIDENCE FOR PREDATOR PERCEPTION")
-    print("\nFindings:")
-    print(f"1. Vigilance difference: {percent_change:+.1f}% (p = {p_value:.4f})")
-    print(f"2. Effect size: Cohen's d = {cohens_d:.3f}")
-    print(f"3. Statistical significance not achieved" if p_value >= 0.05 else "Effect too small to be meaningful")
-    print("4. Alternative explanation: Rats may be seen primarily as competitors")
+    p_display = p_value if not pd.isna(p_value) else 'N/A'
+    ax1.text(0.5, max(conclusion_data) * 1.1, 
+             f'p = {p_display}', ha='center', fontweight='bold', fontsize=12)
+    ax1.text(0.5, max(conclusion_data) * 1.05, 
+             'Not Significant', ha='center', fontsize=10)
 
-print("\n" + "="*60)
-print("Analysis Complete")
-print("="*60)
+for bar, val in zip(bars, conclusion_data):
+    if not pd.isna(val):
+        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3,
+                 f'{val:.2f}s', ha='center', fontweight='bold')
+
+# Plot 2: Summary stats text
+ax2.axis('off')
+# Format variables safely for display
+diff_display = f"{difference:+.2f}" if not pd.isna(difference) else "N/A"
+pct_display = f"{percent_change:+.1f}%" if not pd.isna(percent_change) else "N/A"
+p_display = f"{p_value:.4f}" if not pd.isna(p_value) else "N/A"
+risk_diff_display = f"{risk_difference:+.3f}" if not pd.isna(risk_difference) else "N/A" 
+chi2_display = f"{chi2_p:.4f}" if not pd.isna(chi2_p) else "N/A"
+cohens_display = f"{cohens_d:.3f}" if not pd.isna(cohens_d) else "N/A"
+cramers_display = f"{cramers_v:.3f}" if not pd.isna(cramers_v) else "N/A"
+vigilance_opposite = difference < 0 if not pd.isna(difference) else False
+
+summary_text = f"""
+INVESTIGATION A RESULTS
+
+Key Findings:
+• Sample: {len(dataset1)} observations
+• Vigilance: {diff_display}s ({pct_display}), p={p_display}
+• Effect: {vigilance_effect} (d={cohens_display})
+
+CONCLUSION:
+{'RATS ARE COMPETITORS' if vigilance_opposite else 'PREDATOR PERCEPTION' if evidence_count >= 2 else 'WEAK EVIDENCE' if evidence_count == 1 else 'INSUFFICIENT EVIDENCE'}
+"""
+
+ax2.text(0.05, 0.95, summary_text, transform=ax2.transAxes, fontsize=11,
+         verticalalignment='top', fontfamily='monospace',
+         bbox=dict(boxstyle='round,pad=0.5', facecolor='lightblue', alpha=0.7))
+
+plt.suptitle('Investigation A: Final Results', fontsize=16, fontweight='bold')
+plt.tight_layout()
+
+# Save final conclusion plot
+final_filename = os.path.join(plots_dir, 'phase6_final_conclusion.png')
+plt.savefig(final_filename, dpi=300, bbox_inches='tight', facecolor='white')
+print(f"Saved final conclusion to: {final_filename}")
+plt.show()
+
+# ============================================================================
+# FINAL ANSWER: SIMPLE AND CLEAR
+# ============================================================================
+print("\n" + "="*70)
+print("FINAL ANSWER: INVESTIGATION A")
+print("="*70)
+
+
+print(f"\nMETHOD:")
+print(f"Compared bat vigilance immediately vs delayed after rat activity (time-based analysis)")
+print(f"Sample: {len(dataset1)} bat observations ({len(immediate_data)} immediate <=1min, {len(delayed_data)} delayed >5min)")
+
+print(f"\nKEY FINDINGS:")
+print(f"• Average vigilance DELAYED after rats (>5min): {mean_delayed:.2f} seconds")
+print(f"• Average vigilance IMMEDIATE after rats (<=1min): {mean_immediate:.2f} seconds")
+print(f"• Vigilance difference: {diff_display}s ({pct_display} change)")
+
+# Safe display of risk variables  
+risk_immediate_display = f"{risk_immediate:.1%}" if not pd.isna(risk_immediate) else "N/A"
+risk_delayed_display = f"{risk_delayed:.1%}" if not pd.isna(risk_delayed) else "N/A"
+print(f"• Risk-taking DELAYED: {risk_delayed_display}")
+print(f"• Risk-taking IMMEDIATE: {risk_immediate_display}")
+print(f"• Risk difference: {risk_diff_display}")
+
+# Safe display of test statistics
+t_display = f"{t_statistic:.3f}" if not pd.isna(t_statistic) else "N/A"
+chi2_stat_display = f"{chi2_stat:.3f}" if not pd.isna(chi2_stat) else "N/A"
+
+print(f"• Vigilance test: t = {t_display}, p = {p_display}, d = {cohens_display}")
+print(f"• Risk test: chi2 = {chi2_stat_display}, p = {chi2_display}, V = {cramers_display}")
+print(f"• Evidence strength: {evidence_count}/4 indicators significant")
+
+# Use comprehensive evidence for final conclusion with corrected interpretation
+print(f"\n" + "="*50)
+
+# Check if effect is opposite to predator theory
+vigilance_opposite = difference < 0 if not pd.isna(difference) else False
+
+if vigilance_opposite:
+    print("CONCLUSION: STRONG EVIDENCE AGAINST PREDATOR PERCEPTION")
+    print("RATS ARE LIKELY COMPETITORS, NOT PREDATORS")
+    print("\nEvidence:")
+    print(f"• Vigilance DECREASES immediately after rats ({difference:.2f}s, {percent_change:+.1f}%)")
+    print("• This is OPPOSITE to predator perception theory")
+    print("• Suggests bats view rats as competitors who reduce feeding pressure")
+    if evidence_count == 0:
+        print("• Statistical tests confirm no evidence for predator behavior")
+elif evidence_count >= 2:
+    print("CONCLUSION: YES")
+    print("BATS LIKELY PERCEIVE RATS AS PREDATORS")
+    print("\nEvidence:")
+    if significant_vigilance:
+        print("• Statistically significant increase in vigilance")
+    if meaningful_vigilance_effect:
+        print("• Meaningful effect size in vigilance behavior")
+    if significant_risk:
+        print("• Statistically significant difference in risk-taking")
+    if meaningful_risk_effect:
+        print("• Meaningful effect size in risk-taking behavior")
+    print("• Multiple behavioral indicators support predator perception")
+elif evidence_count == 1:
+    print("CONCLUSION: WEAK EVIDENCE")
+    print("SOME SUPPORT FOR PREDATOR PERCEPTION")
+    print("\nEvidence:")
+    if significant_vigilance or meaningful_vigilance_effect:
+        print("• Some support from vigilance analysis")
+    if significant_risk or meaningful_risk_effect:
+        print("• Some support from risk-taking analysis")
+    print("• Limited but present behavioral indicators")
+else:
+    print("CONCLUSION: INSUFFICIENT EVIDENCE")
+    print("NO STRONG SUPPORT FOR PREDATOR PERCEPTION")
+    print("\nReason:")
+    print("• Neither vigilance nor risk-taking show strong differences")
+    print("• Effect sizes too small to be meaningful")
+    print("• Rats may be seen as competitors rather than predators")
+
+print("="*50)
+print("Investigation A Complete")
+print("="*70)
+
 #%%

@@ -561,6 +561,79 @@ if not pd.isna(reward_immediate) and not pd.isna(reward_delayed):
 
 # Behavioral analysis complete - ready for visualization
 
+# Store variables needed for Phase 6
+mean_delayed = delayed_rats.mean() if len(delayed_rats) > 0 else 0
+mean_immediate = immediate_rats.mean() if len(immediate_rats) > 0 else 0
+difference = mean_immediate - mean_delayed if len(immediate_rats) > 0 and len(delayed_rats) > 0 else 0
+percent_change = (difference / mean_delayed) * 100 if mean_delayed > 0 else 0
+
+# Store risk difference variables
+risk_difference = risk_immediate - risk_delayed if not pd.isna(risk_immediate) and not pd.isna(risk_delayed) else 0
+
+# Initialize statistical test variables for Phase 6
+t_statistic = float('nan')
+t_p_value = float('nan')
+chi2_stat = float('nan') 
+chi2_p = float('nan')
+cramers_v = float('nan')
+vigilance_effect = 'unknown'
+evidence_count = 0
+immediate_data = immediate_rats
+delayed_data = delayed_rats
+
+# Perform statistical tests for time-based comparison
+if len(immediate_rats) > 0 and len(delayed_rats) > 0:
+    # T-test for vigilance differences
+    t_statistic, t_p_value = stats.ttest_ind(immediate_rats, delayed_rats)
+    print(f"\\nT-test results (immediate vs delayed vigilance):")
+    print(f"  t-statistic: {t_statistic:.3f}, p-value: {t_p_value:.4f}")
+    
+    # Interpret vigilance effect
+    if abs(difference) >= 2:  # Practical significance threshold
+        if difference > 0:
+            vigilance_effect = 'higher_immediate'
+        else:
+            vigilance_effect = 'higher_delayed'
+    else:
+        vigilance_effect = 'no_difference'
+
+# Risk-taking behavior statistical test
+if not pd.isna(risk_immediate) and not pd.isna(risk_delayed):
+    # Create contingency table for chi-square test
+    immediate_risk_yes = int(risk_immediate * len(immediate_rats)) if len(immediate_rats) > 0 else 0
+    immediate_risk_no = len(immediate_rats) - immediate_risk_yes if len(immediate_rats) > 0 else 0
+    delayed_risk_yes = int(risk_delayed * len(delayed_rats)) if len(delayed_rats) > 0 else 0
+    delayed_risk_no = len(delayed_rats) - delayed_risk_yes if len(delayed_rats) > 0 else 0
+    
+    if immediate_risk_yes + immediate_risk_no + delayed_risk_yes + delayed_risk_no > 0:
+        contingency_table = np.array([[immediate_risk_yes, immediate_risk_no],
+                                     [delayed_risk_yes, delayed_risk_no]])
+        chi2_stat, chi2_p, _, _ = stats.chi2_contingency(contingency_table)
+        
+        # Calculate Cramér's V for effect size
+        n = contingency_table.sum()
+        cramers_v = np.sqrt(chi2_stat / (n * (min(contingency_table.shape) - 1))) if n > 0 else 0
+        
+        print(f"\\nChi-square test results (risk-taking behavior):")
+        print(f"  chi2-statistic: {chi2_stat:.3f}, p-value: {chi2_p:.4f}")
+        print(f"  Cramér's V: {cramers_v:.3f}")
+
+# Count evidence for predator perception
+significant_vigilance = t_p_value < 0.05 if not pd.isna(t_p_value) else False
+meaningful_vigilance_effect = abs(difference) >= 2
+significant_risk = chi2_p < 0.05 if not pd.isna(chi2_p) else False
+meaningful_risk_effect = cramers_v >= 0.1 if not pd.isna(cramers_v) else False
+
+evidence_count = sum([significant_vigilance, meaningful_vigilance_effect, 
+                     significant_risk, meaningful_risk_effect])
+
+print(f"\\nEvidence summary:")
+print(f"  Significant vigilance difference: {significant_vigilance}")
+print(f"  Meaningful vigilance effect: {meaningful_vigilance_effect}")
+print(f"  Significant risk difference: {significant_risk}")  
+print(f"  Meaningful risk effect: {meaningful_risk_effect}")
+print(f"  Total evidence indicators: {evidence_count}/4")
+
 # Create comprehensive visualization
 fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10), facecolor='white')
 
@@ -637,200 +710,250 @@ plt.show()
 
 #%%
 # ============================================================================
-# PHASE 5: SIMPLE STATISTICAL TESTING
+# PHASE 5: ENHANCED STATISTICAL ANALYSIS - PREDATOR PERCEPTION TESTING
 # ============================================================================
 print("\n" + "="*60)
-print("PHASE 5: SIMPLE STATISTICAL TESTING")
+print("PHASE 5: ENHANCED STATISTICAL ANALYSIS - PREDATOR PERCEPTION TESTING")
 print("="*60)
 
-# Use the time-based comparison from Phase 4 for statistical testing
-print("TIME-BASED STATISTICAL TESTING:")
-print("Since all bats encountered rats, comparing immediate vs delayed responses")
+print("RESEARCH QUESTION: Do bats perceive rats as potential predators?")
+print("EXPECTED OUTCOME: If rats are perceived as predators, bats should show")
+print("                  increased vigilance (longer time before approaching food)")
+print("")
 
-# Data prepared in Phase 4 - time-based comparison
-immediate_data = dataset1[dataset1['seconds_after_rat_arrival'] <= 60]['vigilance']
-delayed_data = dataset1[dataset1['seconds_after_rat_arrival'] > 300]['vigilance']
+# STEP 1: FORMULATE HYPOTHESES
+print("STEP 1: FORMULATE HYPOTHESES")
+print("=" * 40)
+print("H0 (Null): μ_with_rats = μ_without_rats")
+print("    (No difference in vigilance - rats not perceived as predators)")
+print("")
+print("H1 (Alternative): μ_with_rats > μ_without_rats") 
+print("    (Higher vigilance with rats - rats perceived as predators)")
+print("")
+print("Significance level: α = 0.05")
+print("Test type: One-tailed two-sample t-test")
 
-# Additional data for comprehensive analysis
-immediate_risk = dataset1[dataset1['seconds_after_rat_arrival'] <= 60]['risk']
-delayed_risk = dataset1[dataset1['seconds_after_rat_arrival'] > 300]['risk']
+# STEP 2: PREPARE DATA USING PROPER RAT PRESENCE DETECTION
+print("\n" + "=" * 40)
+print("STEP 2: DATA PREPARATION")
+print("=" * 40)
 
-print(f"\nSample sizes:")
-print(f"  Immediate response (<=1min): n = {len(immediate_data)}")
-print(f"  Delayed response (>5min): n = {len(delayed_data)}")
+# Create vigilance variable
+dataset1['vigilance'] = dataset1['bat_landing_to_food']
 
-# Perform statistical testing only if both groups have data
-from scipy.stats import ttest_ind, chi2_contingency
+# Use Dataset2 environmental context for proper rat presence detection
+print("Merging with Dataset2 for accurate rat presence periods...")
 
-if len(immediate_data) > 0 and len(delayed_data) > 0:
-    t_statistic, p_value = ttest_ind(immediate_data, delayed_data)
-else:
-    print("WARNING: Cannot perform t-test: insufficient data in one or both groups")
-    t_statistic, p_value = float('nan'), float('nan')
+# Merge datasets based on time periods
+dataset1['time_period'] = dataset1['start_time'].dt.floor('30min')
+dataset2['time_period'] = dataset2['time'].dt.floor('30min')
 
-# Calculate basic statistics for time-based comparison
-mean_immediate = immediate_data.mean() if len(immediate_data) > 0 else float('nan')
-mean_delayed = delayed_data.mean() if len(delayed_data) > 0 else float('nan')
-difference = mean_immediate - mean_delayed if not (pd.isna(mean_immediate) or pd.isna(mean_delayed)) else float('nan')
-percent_change = (difference / mean_delayed) * 100 if mean_delayed > 0 and not pd.isna(difference) else float('nan')
+# Merge to get environmental rat presence data
+merged_data = dataset1.merge(
+    dataset2[['time_period', 'rat_arrival_number', 'rat_minutes']], 
+    on='time_period', 
+    how='left'
+)
 
-# Calculate Cohen's d (effect size) only if we have valid data
-if len(immediate_data) > 1 and len(delayed_data) > 1:
-    pooled_std = np.sqrt(((len(immediate_data)-1)*immediate_data.std()**2 + 
-                         (len(delayed_data)-1)*delayed_data.std()**2) / 
-                        (len(immediate_data) + len(delayed_data) - 2))
-    cohens_d = difference / pooled_std if pooled_std > 0 else float('nan')
-else:
-    cohens_d = float('nan')
+# Create proper rat presence indicator
+# Rats present if there were rat arrivals OR rat activity in that 30-min period
+merged_data['rats_present'] = ((merged_data['rat_arrival_number'] > 0) | 
+                               (merged_data['rat_minutes'] > 0)).fillna(False)
 
-print(f"\nSTATISTICAL RESULTS:")
-print(f"1. VIGILANCE ANALYSIS (TIME-BASED T-TEST):")
-print(f"  Mean vigilance IMMEDIATE after rats (<=1min): {mean_immediate:.2f} seconds")
-print(f"  Mean vigilance DELAYED after rats (>5min): {mean_delayed:.2f} seconds")
-print(f"  Difference: {difference:+.2f} seconds")
-print(f"  Percentage change: {percent_change:+.1f}%")
-print(f"  T-statistic: {t_statistic:.3f}")
-print(f"  P-value: {p_value:.4f}")
-print(f"  Cohen's d (effect size): {cohens_d:.3f}")
+# Update main dataset
+dataset1['rats_present'] = merged_data['rats_present']
+dataset1['environmental_rat_minutes'] = merged_data['rat_minutes'].fillna(0)
 
-# Additional statistical testing for risk-taking behavior (time-based)
-print(f"\n2. RISK-TAKING BEHAVIOR ANALYSIS (TIME-BASED CHI-SQUARE TEST):")
+print("Rat presence classification:")
+print(f"  Periods WITH rats present: {dataset1['rats_present'].sum()}")
+print(f"  Periods WITHOUT rats present: {(~dataset1['rats_present']).sum()}")
+print(f"  Total bat observations: {len(dataset1)}")
 
-# Create timing groups for chi-square test
-dataset1['timing_group'] = 'delayed'
-dataset1.loc[dataset1['seconds_after_rat_arrival'] <= 60, 'timing_group'] = 'immediate'
+# Save merged data with environmental context
+print(f"\nSaving merged data with environmental context...")
+merged_filename = os.path.join(datasets_dir, 'dataset1_merged_with_environmental_context.csv')
+merged_data.to_csv(merged_filename, index=False)
+print(f"Saved merged dataset to: {merged_filename}")
+print(f"Columns: {list(merged_data.columns)}")
+print(f"Shape: {merged_data.shape}")
 
-# Filter to only include immediate and delayed groups
-timing_subset = dataset1[dataset1['timing_group'].isin(['immediate', 'delayed'])]
+# STEP 3: PERFORM COMPREHENSIVE STATISTICAL TESTS
+print("\n" + "=" * 40)
+print("STEP 3: COMPREHENSIVE STATISTICAL ANALYSIS")
+print("=" * 40)
 
-if len(timing_subset) > 0:
-    # Create contingency table for risk-taking behavior by timing
-    risk_contingency = pd.crosstab(timing_subset['timing_group'], timing_subset['risk'], margins=False)
-    print("   Contingency table (timing vs risk):")
-    print(risk_contingency)
+# Separate vigilance data by rat presence
+vigilance_with_rats = dataset1[dataset1['rats_present']]['vigilance'].dropna()
+vigilance_without_rats = dataset1[~dataset1['rats_present']]['vigilance'].dropna()
+
+print("Sample sizes:")
+print(f"  With rats: n1 = {len(vigilance_with_rats)}")
+print(f"  Without rats: n2 = {len(vigilance_without_rats)}")
+
+# Initialize variables for consistent access
+p_value = float('nan')
+cohens_d = float('nan')
+effect_size = "unknown"
+statistical_conclusion = "INSUFFICIENT_DATA"
+
+if len(vigilance_with_rats) > 0 and len(vigilance_without_rats) > 0:
+    # Descriptive statistics
+    mean_with = vigilance_with_rats.mean()
+    mean_without = vigilance_without_rats.mean()
+    std_with = vigilance_with_rats.std()
+    std_without = vigilance_without_rats.std()
     
-    # Perform chi-square test if we have enough data
-    if risk_contingency.shape == (2, 2) and (risk_contingency > 5).all().all():
-        chi2_stat, chi2_p, chi2_dof, chi2_expected = chi2_contingency(risk_contingency)
-        print(f"   Chi-square statistic: {chi2_stat:.3f}")
-        print(f"   P-value: {chi2_p:.4f}")
-        print(f"   Degrees of freedom: {chi2_dof}")
-        
-        # Calculate effect size (Cramér's V)
-        n = risk_contingency.sum().sum()
-        cramers_v = np.sqrt(chi2_stat / (n * (min(risk_contingency.shape) - 1)))
-        print(f"   Cramér's V (effect size): {cramers_v:.3f}")
+    print(f"\nDescriptive Statistics:")
+    print(f"  With rats: μ1 = {mean_with:.3f}s, σ1 = {std_with:.3f}s")
+    print(f"  Without rats: μ2 = {mean_without:.3f}s, σ2 = {std_without:.3f}s")
+    
+    # Two-sample t-test
+    t_stat, p_value_two_tailed = stats.ttest_ind(vigilance_with_rats, vigilance_without_rats)
+    
+    # Convert to one-tailed test (we expect vigilance to be HIGHER with rats)
+    if mean_with > mean_without:
+        p_value = p_value_two_tailed / 2  # One-tailed in expected direction
     else:
-        print("   WARNING: Chi-square test not appropriate: insufficient data or low cell counts")
-        chi2_stat, chi2_p, cramers_v = float('nan'), float('nan'), float('nan')
+        p_value = 1 - (p_value_two_tailed / 2)  # One-tailed in unexpected direction
     
-    # Risk proportions by timing
-    risk_immediate = timing_subset[timing_subset['timing_group'] == 'immediate']['risk'].mean()
-    risk_delayed = timing_subset[timing_subset['timing_group'] == 'delayed']['risk'].mean()
-    risk_difference = risk_immediate - risk_delayed if not (pd.isna(risk_immediate) or pd.isna(risk_delayed)) else float('nan')
-    print(f"   Risk-taking IMMEDIATE: {risk_immediate:.3f} ({risk_immediate*100:.1f}%)")
-    print(f"   Risk-taking DELAYED: {risk_delayed:.3f} ({risk_delayed*100:.1f}%)")
-    print(f"   Difference: {risk_difference:+.3f} ({risk_difference*100:+.1f}%)")
-else:
-    print("   WARNING: No data available for timing-based risk analysis")
-    chi2_stat, chi2_p, cramers_v = float('nan'), float('nan'), float('nan')
-    risk_difference = float('nan')
-
-# Interpret results for both tests
-print(f"\nCOMPREHENSIVE INTERPRETATION:")
-print(f"VIGILANCE TEST RESULTS:")
-if p_value < 0.05:
-    print(f"  STATISTICALLY SIGNIFICANT (p = {p_value:.4f})")
-else:
-    print(f"  NOT STATISTICALLY SIGNIFICANT (p = {p_value:.4f})")
-
-if abs(cohens_d) < 0.2:
-    vigilance_effect = "negligible"
-elif abs(cohens_d) < 0.5:
-    vigilance_effect = "small"
-elif abs(cohens_d) < 0.8:
-    vigilance_effect = "medium"
-else:
-    vigilance_effect = "large"
-print(f"  Effect size: {vigilance_effect} (Cohen's d = {cohens_d:.3f})")
-
-print(f"\nRISK-TAKING TEST RESULTS:")
-if chi2_p < 0.05:
-    print(f"  STATISTICALLY SIGNIFICANT (p = {chi2_p:.4f})")
-else:
-    print(f"  NOT STATISTICALLY SIGNIFICANT (p = {chi2_p:.4f})")
-
-if cramers_v < 0.1:
-    risk_effect = "negligible"
-elif cramers_v < 0.3:
-    risk_effect = "small"
-elif cramers_v < 0.5:
-    risk_effect = "medium"
-else:
-    risk_effect = "large"
-print(f"  Effect size: {risk_effect} (Cramér's V = {cramers_v:.3f})")
-
-# Overall conclusion for predator perception
-significant_vigilance = p_value < 0.05
-significant_risk = chi2_p < 0.05
-meaningful_vigilance_effect = abs(cohens_d) >= 0.2
-meaningful_risk_effect = cramers_v >= 0.1
-
-print(f"\nOVERALL EVIDENCE FOR PREDATOR PERCEPTION:")
-evidence_count = sum([significant_vigilance, significant_risk, meaningful_vigilance_effect, meaningful_risk_effect])
-
-print(f"\nEVIDENCE SUMMARY:")
-print(f"  • Significant vigilance difference: {'YES' if significant_vigilance else 'NO'}")
-print(f"  • Meaningful vigilance effect size: {'YES' if meaningful_vigilance_effect else 'NO'}")
-print(f"  • Significant risk difference: {'YES' if significant_risk else 'NO'}")
-print(f"  • Meaningful risk effect size: {'YES' if meaningful_risk_effect else 'NO'}")
-print(f"  • Total supporting evidence: {evidence_count}/4 indicators")
-
-if evidence_count >= 2:
-    print(f"\nSTRONG EVIDENCE ({evidence_count}/4 indicators support predator perception)")
-elif evidence_count == 1:
-    print(f"\nWEAK EVIDENCE ({evidence_count}/4 indicators support predator perception)")
-else:
-    print(f"\nNO EVIDENCE ({evidence_count}/4 indicators support predator perception)")
+    # Effect size (Cohen's d)
+    pooled_std = np.sqrt(((len(vigilance_with_rats)-1)*std_with**2 + 
+                         (len(vigilance_without_rats)-1)*std_without**2) / 
+                        (len(vigilance_with_rats) + len(vigilance_without_rats) - 2))
+    cohens_d = (mean_with - mean_without) / pooled_std
     
-# Add interpretation of negative effects
-if difference < 0 and not pd.isna(difference):
-    print(f"\nCRITICAL INTERPRETATION:")
-    print(f"   Vigilance DECREASES immediately after rats ({difference:.2f}s)")
-    print(f"   This suggests COMPETITIVE rather than PREDATORY relationship")
-    print(f"   Bats may relax when competitors (rats) are recently active")
+    # Results
+    mean_diff = mean_with - mean_without
+    percent_change = (mean_diff / mean_without) * 100 if mean_without > 0 else 0
+    df = len(vigilance_with_rats) + len(vigilance_without_rats) - 2
+    
+    print(f"\nTest Results:")
+    print(f"  t-statistic = {t_stat:.4f}")
+    print(f"  Degrees of freedom = {df}")
+    print(f"  One-tailed p-value = {p_value:.4f}")
+    print(f"  Mean difference = {mean_diff:+.3f} seconds")
+    print(f"  Percentage change = {percent_change:+.1f}%")
+    print(f"  Cohen's d = {cohens_d:.4f}")
+    
+    # STEP 4: DECISION AND INTERPRETATION
+    print("\n" + "=" * 40)
+    print("STEP 4: DECISION AND INTERPRETATION")
+    print("=" * 40)
+    
+    # Statistical decision
+    print("Statistical Decision:")
+    if p_value <= 0.05:
+        if mean_with > mean_without:
+            print(f"  REJECT H0: p = {p_value:.4f} ≤ 0.05")
+            print(f"  ACCEPT H1: Bats show significantly higher vigilance with rats")
+            statistical_conclusion = "SIGNIFICANT_INCREASE"
+        else:
+            print(f"  REJECT H0: p = {p_value:.4f} ≤ 0.05")
+            print(f"  But vigilance DECREASED with rats (unexpected direction)")
+            statistical_conclusion = "SIGNIFICANT_DECREASE"
+    else:
+        print(f"  FAIL TO REJECT H0: p = {p_value:.4f} > 0.05")
+        print(f"  No significant difference in vigilance")
+        statistical_conclusion = "NO_SIGNIFICANT_DIFFERENCE"
+    
+    # Effect size interpretation
+    print(f"\nEffect Size Interpretation:")
+    if abs(cohens_d) >= 0.8:
+        effect_size = "large"
+    elif abs(cohens_d) >= 0.5:
+        effect_size = "medium"  
+    elif abs(cohens_d) >= 0.2:
+        effect_size = "small"
+    else:
+        effect_size = "negligible"
+    print(f"  Cohen's d = {cohens_d:.3f} ({effect_size} effect)")
+    
+    # Behavioral category validation (unified analysis approach)
+    print(f"\nBehavioral Category Validation:")
+    if 'bat_and_rat' in dataset1['habit'].values:
+        bat_rat_vigilance = dataset1[dataset1['habit'] == 'bat_and_rat']['vigilance'].mean()
+        fast_vigilance = dataset1[dataset1['habit'] == 'fast']['vigilance'].mean()
+        
+        print(f"  bat_and_rat behaviors: {bat_rat_vigilance:.2f}s average vigilance")
+        print(f"  fast behaviors: {fast_vigilance:.2f}s average vigilance")
+        
+        if bat_rat_vigilance > fast_vigilance:
+            print(f"  --> bat_and_rat category shows higher vigilance (supports predator component)")
+        else:
+            print(f"  --> bat_and_rat category does not show clearly higher vigilance")
+    
+else:
+    print(f"\nERROR: Insufficient data for statistical testing")
+    statistical_conclusion = "INSUFFICIENT_DATA"
+    p_value = float('nan')
+    cohens_d = float('nan')
+    percent_change = float('nan')
+    mean_diff = float('nan')
 
+# Create enhanced hypothesis testing visualization
+print("\nCreating Phase 5 enhanced statistical analysis visualization...")
 
-# Create simple statistical plots
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5), facecolor='white')
+fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6), facecolor='white')
 
-# Box plot comparison (time-based)
-data_for_box = [delayed_data, immediate_data]
-box_plot = ax1.boxplot(data_for_box, labels=['Delayed (>5min)', 'Immediate (<=1min)'], patch_artist=True)
-box_plot['boxes'][0].set_facecolor('lightgreen')
-box_plot['boxes'][1].set_facecolor('lightcoral')
-ax1.set_ylabel('Vigilance (seconds)')
-ax1.set_title('Time-Based Vigilance Comparison')
-ax1.grid(True, alpha=0.3)
+if len(vigilance_with_rats) > 0 and len(vigilance_without_rats) > 0:
+    # Plot 1: Hypothesis test results
+    means = [mean_without, mean_with]
+    errors = [std_without, std_with]
+    bars = ax1.bar(['No Rats Present', 'Rats Present'], means, yerr=errors, 
+                   color=['#2ecc71', '#e74c3c'], capsize=5, alpha=0.7)
+    ax1.set_ylabel('Vigilance (seconds)')
+    ax1.set_title(f'Hypothesis Test Results\np = {p_value:.4f}')
+    
+    # Add significance indicator
+    if p_value <= 0.05:
+        ax1.text(0.5, max(means) * 1.2, '***' if p_value <= 0.001 else '**' if p_value <= 0.01 else '*', 
+                ha='center', fontsize=16, fontweight='bold')
+    
+    for bar, val in zip(bars, means):
+        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + errors[bars.index(bar)] + 1,
+                 f'{val:.2f}s', ha='center', fontweight='bold')
+    
+    # Plot 2: Distribution comparison
+    ax2.hist(vigilance_without_rats, alpha=0.6, label='No Rats Present', 
+             bins=20, color='#2ecc71', density=True)
+    ax2.hist(vigilance_with_rats, alpha=0.6, label='Rats Present', 
+             bins=20, color='#e74c3c', density=True)
+    ax2.set_xlabel('Vigilance (seconds)')
+    ax2.set_ylabel('Density')
+    ax2.set_title('Vigilance Distribution Comparison')
+    ax2.legend()
+    
+    # Add mean lines
+    ax2.axvline(mean_without, color='#27ae60', linestyle='--', linewidth=2, alpha=0.8)
+    ax2.axvline(mean_with, color='#c0392b', linestyle='--', linewidth=2, alpha=0.8)
+    
+    # Plot 3: Effect size visualization
+    ax3.bar(['Effect Size'], [abs(cohens_d)], color='steelblue', alpha=0.7)
+    ax3.set_ylabel("Cohen's d")
+    ax3.set_title(f'Effect Size: {effect_size.title()}')
+    ax3.text(0, abs(cohens_d) + 0.05, f'{cohens_d:.3f}', ha='center', fontweight='bold')
+    
+    # Add effect size reference lines
+    ax3.axhline(0.2, color='green', linestyle=':', alpha=0.5, label='Small')
+    ax3.axhline(0.5, color='orange', linestyle=':', alpha=0.5, label='Medium') 
+    ax3.axhline(0.8, color='red', linestyle=':', alpha=0.5, label='Large')
+    ax3.legend()
 
-# Histogram comparison (time-based)
-ax2.hist(delayed_data, alpha=0.6, label='Delayed (>5min)', bins=15, color='green')
-ax2.hist(immediate_data, alpha=0.6, label='Immediate (<=1min)', bins=15, color='red')
-ax2.set_xlabel('Vigilance (seconds)')
-ax2.set_ylabel('Frequency')
-ax2.set_title('Time-Based Distribution Comparison')
-ax2.legend()
+else:
+    for ax in [ax1, ax2, ax3]:
+        ax.text(0.5, 0.5, 'Insufficient Data\nfor Analysis', 
+               ha='center', va='center', transform=ax.transAxes, fontsize=12)
 
-plt.suptitle('Phase 5: Simple Statistical Analysis Results', fontsize=14, fontweight='bold')
+plt.suptitle('Phase 5: Enhanced Statistical Analysis Results', fontsize=14, fontweight='bold')
 plt.tight_layout()
 
-# Save plot
-stats_filename = os.path.join(plots_dir, 'phase5_statistical_results.png')
-plt.savefig(stats_filename, dpi=300, bbox_inches='tight', facecolor='white')
-print(f"Saved statistical analysis to: {stats_filename}")
+# Save the enhanced statistical analysis plots
+stats_plot_filename = os.path.join(plots_dir, 'phase5_enhanced_statistical_analysis.png')
+plt.savefig(stats_plot_filename, dpi=300, bbox_inches='tight', facecolor='white')
+print(f"Saved enhanced statistical analysis visualization to: {stats_plot_filename}")
 plt.show()
 
-print(f"\nPhase 5 completed: Statistical testing complete!")
+print(f"\nPhase 5 completed: Enhanced statistical analysis complete!")
 
 #%%
 # ============================================================================
@@ -844,70 +967,225 @@ print("="*60)
 print("FINAL RESEARCH QUESTION: Do bats perceive rats as potential predators?")
 print("METHOD: Measured vigilance (bat_landing_to_food) with vs without rat presence")
 
-# Create final summary visualization
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5), facecolor='white')
+# Determine final answer based on statistical analysis from Phase 5
+if 'statistical_conclusion' in locals():
+    if statistical_conclusion == "SIGNIFICANT_INCREASE":
+        final_answer = "YES"
+        evidence_strength = "STRONG"
+        print(f"CONCLUSION: ✓ YES - Bats perceive rats as predators")
+        print(f"Evidence: p = {p_value:.4f}, {percent_change:+.1f}% increase in vigilance")
+        
+    elif statistical_conclusion == "SIGNIFICANT_DECREASE": 
+        final_answer = "NO"
+        evidence_strength = "STRONG CONTRARY"
+        print(f"CONCLUSION: ✗ NO - Bats do not perceive rats as predators")
+        print(f"Evidence: p = {p_value:.4f}, vigilance decreased with rats")
+        
+    elif statistical_conclusion == "NO_SIGNIFICANT_DIFFERENCE":
+        final_answer = "NO"
+        evidence_strength = "INSUFFICIENT"
+        print(f"CONCLUSION: ✗ NO - No evidence for predator perception")
+        print(f"Evidence: p = {p_value:.4f} > 0.05, {effect_size} effect size")
+        
+    else:  # INSUFFICIENT_DATA
+        final_answer = "INCONCLUSIVE"
+        evidence_strength = "INSUFFICIENT DATA"
+        print(f"CONCLUSION: ? INCONCLUSIVE - Insufficient data")
 
-# Plot 1: Time-based conclusion chart
-conclusion_data = [mean_delayed, mean_immediate]
-labels = ['Delayed (>5min)', 'Immediate (<=1min)']
-colors = ['lightgreen', 'lightcoral']
-bars = ax1.bar(labels, conclusion_data, color=colors, alpha=0.8)
-ax1.set_ylabel('Average Vigilance (seconds)')
-ax1.set_title('MAIN FINDING: Time-Based Vigilance Comparison')
-
-# Add significance indicator
-if not pd.isna(p_value) and p_value < 0.05:
-    ax1.text(0.5, max(conclusion_data) * 1.1, 
-             f'p = {p_value:.4f} *', ha='center', fontweight='bold', fontsize=12)
-    ax1.text(0.5, max(conclusion_data) * 1.05, 
-             'Statistically Significant', ha='center', fontsize=10)
 else:
-    p_display = p_value if not pd.isna(p_value) else 'N/A'
-    ax1.text(0.5, max(conclusion_data) * 1.1, 
-             f'p = {p_display}', ha='center', fontweight='bold', fontsize=12)
-    ax1.text(0.5, max(conclusion_data) * 1.05, 
-             'Not Significant', ha='center', fontsize=10)
+    final_answer = "ERROR"
+    evidence_strength = "ANALYSIS ERROR"
+    print(f"ERROR: Analysis could not be completed")
 
-for bar, val in zip(bars, conclusion_data):
-    if not pd.isna(val):
-        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3,
+# Create enhanced final summary visualization
+fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6), facecolor='white')
+
+# Plot 1: Final vigilance comparison with statistical results
+if 'mean_with' in locals() and 'mean_without' in locals():
+    means = [mean_without, mean_with]
+    errors = [std_without, std_with]
+    labels = ['No Rats Present', 'Rats Present']
+    
+    # Color based on final answer
+    if final_answer == "YES":
+        colors = ['#2ecc71', '#e74c3c']  # Green to Red (significant increase)
+    elif final_answer == "NO":
+        colors = ['#e74c3c', '#2ecc71']  # Red to Green (no increase/decrease)
+    else:
+        colors = ['#95a5a6', '#95a5a6']  # Gray (inconclusive)
+    
+    bars = ax1.bar(labels, means, yerr=errors, color=colors, capsize=5, alpha=0.7)
+    ax1.set_ylabel('Average Vigilance (seconds)')
+    ax1.set_title(f'Final Results: Vigilance Comparison')
+    
+    # Add significance indicators
+    if 'p_value' in locals() and not pd.isna(p_value):
+        if p_value <= 0.001:
+            sig_text = '***'
+        elif p_value <= 0.01:
+            sig_text = '**'  
+        elif p_value <= 0.05:
+            sig_text = '*'
+        else:
+            sig_text = 'n.s.'
+        
+        ax1.text(0.5, max(means) * 1.15, sig_text, ha='center', fontsize=16, fontweight='bold')
+        ax1.text(0.5, max(means) * 1.08, f'p = {p_value:.4f}', ha='center', fontsize=10)
+    
+    # Add values on bars
+    for bar, val in zip(bars, means):
+        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + errors[means.index(val)] + 0.5,
                  f'{val:.2f}s', ha='center', fontweight='bold')
 
-# Plot 2: Summary stats text
-ax2.axis('off')
-# Format variables safely for display
-diff_display = f"{difference:+.2f}" if not pd.isna(difference) else "N/A"
-pct_display = f"{percent_change:+.1f}%" if not pd.isna(percent_change) else "N/A"
-p_display = f"{p_value:.4f}" if not pd.isna(p_value) else "N/A"
-risk_diff_display = f"{risk_difference:+.3f}" if not pd.isna(risk_difference) else "N/A" 
-chi2_display = f"{chi2_p:.4f}" if not pd.isna(chi2_p) else "N/A"
-cohens_display = f"{cohens_d:.3f}" if not pd.isna(cohens_d) else "N/A"
-cramers_display = f"{cramers_v:.3f}" if not pd.isna(cramers_v) else "N/A"
-vigilance_opposite = difference < 0 if not pd.isna(difference) else False
+else:
+    # Fallback to time-based comparison if rat presence comparison not available
+    if 'mean_delayed' in locals() and 'mean_immediate' in locals():
+        conclusion_data = [mean_delayed, mean_immediate]
+        labels = ['Delayed (>5min)', 'Immediate (<=1min)']
+        colors = ['lightgreen', 'lightcoral']
+        bars = ax1.bar(labels, conclusion_data, color=colors, alpha=0.8)
+        ax1.set_ylabel('Average Vigilance (seconds)')
+        ax1.set_title('Time-Based Vigilance Comparison')
+        
+        # Add significance indicator for time-based analysis
+        if not pd.isna(t_p_value) and t_p_value < 0.05:
+            ax1.text(0.5, max(conclusion_data) * 1.1, 
+                     f'p = {t_p_value:.4f} *', ha='center', fontweight='bold', fontsize=12)
+        
+        for bar, val in zip(bars, conclusion_data):
+            if not pd.isna(val):
+                ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3,
+                         f'{val:.2f}s', ha='center', fontweight='bold')
+    else:
+        ax1.text(0.5, 0.5, 'No Data Available\\nfor Analysis', 
+                ha='center', va='center', transform=ax1.transAxes, fontsize=12)
+        ax1.set_title('Vigilance Comparison')
 
-summary_text = f"""
-INVESTIGATION A RESULTS
+# Plot 2: Behavioral categories comparison  
+if 'bat_and_rat' in dataset1['habit'].values:
+    habit_vigilance_data = dataset1.groupby('habit')['vigilance'].mean().sort_values()
+    
+    # Create color mapping for habits
+    habit_colors = []
+    for habit in habit_vigilance_data.index:
+        if 'bat' in habit and 'rat' in habit:
+            habit_colors.append('#e74c3c')  # Red for mixed behavior
+        elif habit == 'fast':
+            habit_colors.append('#2ecc71')  # Green for fast
+        else:
+            habit_colors.append('#3498db')  # Blue for others
+    
+    bars_hab = ax2.bar(range(len(habit_vigilance_data)), habit_vigilance_data.values, 
+                       color=habit_colors, alpha=0.7)
+    ax2.set_ylabel('Average Vigilance (seconds)')
+    ax2.set_title('Behavioral Categories Comparison')
+    ax2.set_xlabel('Habit Category')
+    ax2.set_xticks(range(len(habit_vigilance_data)))
+    ax2.set_xticklabels(habit_vigilance_data.index, rotation=45, ha='right')
+    
+    # Add values on bars
+    for bar, val in zip(bars_hab, habit_vigilance_data.values):
+        ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3,
+                 f'{val:.1f}s', ha='center', fontweight='bold', fontsize=9)
+    
+else:
+    ax2.text(0.5, 0.5, 'Behavioral Categories\\nNot Available', 
+            ha='center', va='center', transform=ax2.transAxes, fontsize=12)
+    ax2.set_title('Behavioral Categories Comparison')
 
-Key Findings:
-• Sample: {len(dataset1)} observations
-• Vigilance: {diff_display}s ({pct_display}), p={p_display}
-• Effect: {vigilance_effect} (d={cohens_display})
+# Plot 3: Final answer display with effect size
+ax3.axis('off')
 
-CONCLUSION:
-{'RATS ARE COMPETITORS' if vigilance_opposite else 'PREDATOR PERCEPTION' if evidence_count >= 2 else 'WEAK EVIDENCE' if evidence_count == 1 else 'INSUFFICIENT EVIDENCE'}
-"""
+# Create final answer box
+if final_answer == "YES":
+    conclusion_color = '#27ae60'
+    answer_text = "YES"
+    detail_text = "Bats DO perceive\\nrats as predators"
+    symbol = "✓"
+elif final_answer == "NO":
+    conclusion_color = '#e74c3c'
+    answer_text = "NO" 
+    detail_text = "Bats do NOT perceive\\nrats as predators"
+    symbol = "✗"
+else:
+    conclusion_color = '#f39c12'
+    answer_text = "INCONCLUSIVE"
+    detail_text = "Insufficient evidence\\nfor determination"
+    symbol = "?"
 
-ax2.text(0.05, 0.95, summary_text, transform=ax2.transAxes, fontsize=11,
-         verticalalignment='top', fontfamily='monospace',
-         bbox=dict(boxstyle='round,pad=0.5', facecolor='lightblue', alpha=0.7))
+# Main answer display (top part)
+ax3.text(0.5, 0.9, symbol, ha='center', va='center', fontsize=30, 
+         color=conclusion_color, fontweight='bold')
+ax3.text(0.5, 0.75, answer_text, ha='center', va='center', fontsize=16, 
+         fontweight='bold', color=conclusion_color)
+ax3.text(0.5, 0.65, detail_text, ha='center', va='center', fontsize=10)
 
-plt.suptitle('Investigation A: Final Results', fontsize=16, fontweight='bold')
+# Evidence strength and p-value
+ax3.text(0.5, 0.55, f"Evidence: {evidence_strength}", ha='center', va='center',
+         fontsize=9, style='italic')
+
+if 'p_value' in locals() and not pd.isna(p_value):
+    ax3.text(0.5, 0.48, f"p = {p_value:.4f}", ha='center', va='center',
+             fontsize=8, fontfamily='monospace')
+
+# Effect size visualization (bottom part)
+if 'cohens_d' in locals() and not pd.isna(cohens_d):
+    # Determine effect size category
+    abs_d = abs(cohens_d)
+    if abs_d >= 0.8:
+        effect_category = "Large"
+        effect_color = '#e74c3c'
+    elif abs_d >= 0.5:
+        effect_category = "Medium"
+        effect_color = '#f39c12'
+    elif abs_d >= 0.2:
+        effect_category = "Small"
+        effect_color = '#3498db'
+    else:
+        effect_category = "Negligible"
+        effect_color = '#95a5a6'
+    
+    # Effect size display
+    ax3.text(0.5, 0.35, "Effect Size:", ha='center', va='center',
+             fontsize=10, fontweight='bold')
+    ax3.text(0.5, 0.28, effect_category, ha='center', va='center',
+             fontsize=12, color=effect_color, fontweight='bold')
+    ax3.text(0.5, 0.22, f"Cohen's d = {cohens_d:.3f}", ha='center', va='center',
+             fontsize=9, fontfamily='monospace')
+    
+    # Small effect size bar visualization
+    bar_width = 0.6
+    bar_height = 0.03
+    bar_x = 0.2
+    bar_y = 0.15
+    
+    # Background bar (full scale)
+    ax3.add_patch(plt.Rectangle((bar_x, bar_y), bar_width, bar_height, 
+                               facecolor='lightgray', alpha=0.3))
+    
+    # Effect size indicator
+    effect_position = min(abs_d / 1.0, 1.0) * bar_width  # Scale to 0-1
+    ax3.add_patch(plt.Rectangle((bar_x, bar_y), effect_position, bar_height, 
+                               facecolor=effect_color, alpha=0.7))
+    
+    # Scale labels
+    ax3.text(bar_x, bar_y - 0.03, '0', ha='center', va='center', fontsize=7)
+    ax3.text(bar_x + bar_width/4, bar_y - 0.03, '0.2', ha='center', va='center', fontsize=7)
+    ax3.text(bar_x + bar_width/2, bar_y - 0.03, '0.5', ha='center', va='center', fontsize=7)
+    ax3.text(bar_x + 3*bar_width/4, bar_y - 0.03, '0.8', ha='center', va='center', fontsize=7)
+    ax3.text(bar_x + bar_width, bar_y - 0.03, '1.0', ha='center', va='center', fontsize=7)
+
+ax3.set_xlim(0, 1)
+ax3.set_ylim(0, 1)
+ax3.set_title('FINAL ANSWER & EFFECT SIZE', fontweight='bold', fontsize=14)
+
+plt.suptitle('Phase 6: Investigation A - Enhanced Final Conclusion', fontsize=16, fontweight='bold')
 plt.tight_layout()
 
-# Save final conclusion plot
-final_filename = os.path.join(plots_dir, 'phase6_final_conclusion.png')
+# Save enhanced final conclusion plot
+final_filename = os.path.join(plots_dir, 'phase6_final_ml_enhanced_conclusion.png')
 plt.savefig(final_filename, dpi=300, bbox_inches='tight', facecolor='white')
-print(f"Saved final conclusion to: {final_filename}")
+print(f"Saved enhanced final conclusion to: {final_filename}")
 plt.show()
 
 # ============================================================================
@@ -921,6 +1199,15 @@ print("="*70)
 print(f"\nMETHOD:")
 print(f"Compared bat vigilance immediately vs delayed after rat activity (time-based analysis)")
 print(f"Sample: {len(dataset1)} bat observations ({len(immediate_data)} immediate <=1min, {len(delayed_data)} delayed >5min)")
+
+# Safe display of variables for final summary
+diff_display = f"{difference:+.2f}" if not pd.isna(difference) else "N/A"
+pct_display = f"{percent_change:+.1f}%" if not pd.isna(percent_change) else "N/A"
+p_display = f"{p_value:.4f}" if not pd.isna(p_value) else "N/A"
+risk_diff_display = f"{risk_difference:+.3f}" if not pd.isna(risk_difference) else "N/A" 
+chi2_display = f"{chi2_p:.4f}" if not pd.isna(chi2_p) else "N/A"
+cohens_display = f"{cohens_d:.3f}" if not pd.isna(cohens_d) else "N/A"
+cramers_display = f"{cramers_v:.3f}" if not pd.isna(cramers_v) else "N/A"
 
 print(f"\nKEY FINDINGS:")
 print(f"• Average vigilance DELAYED after rats (>5min): {mean_delayed:.2f} seconds")

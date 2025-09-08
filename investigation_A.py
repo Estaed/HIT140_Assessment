@@ -370,6 +370,215 @@ print("3. How FREQUENCY of rat encounters affects behavior")
 print("4. Whether defensive behaviors correlate with threat levels")
 print("\nThis gradient approach will reveal if bats perceive rats as predators")
 print("through behavioral changes proportional to threat level.")
+
+#%%
+# ============================================================================
+# PHASE 3.1: IQR ANALYSIS AND CORRELATION MAPPING
+# ============================================================================
+print("\n" + "="*60)
+print("PHASE 3.1: IQR ANALYSIS AND CORRELATION MAPPING")
+print("="*60)
+
+# STEP 1: IQR ANALYSIS FOR KEY VARIABLES
+print("=" * 40)
+print("STEP 1: IQR ANALYSIS FOR KEY VARIABLES")
+print("=" * 40)
+
+key_variables = {
+    'bat_landing_to_food': 'Vigilance (seconds)',
+    'seconds_after_rat_arrival': 'Temporal Proximity (seconds)',
+    'rat_minutes': 'Threat Intensity (minutes)', 
+    'rat_arrival_number': 'Threat Frequency (count)'
+}
+
+iqr_results = {}
+print("IQR Analysis for key threat and response variables:\n")
+
+for var, description in key_variables.items():
+    if var in dataset1.columns:
+        data = dataset1[var].dropna()
+        
+        # Calculate quartiles and IQR
+        Q1 = data.quantile(0.25)
+        Q3 = data.quantile(0.75)
+        IQR = Q3 - Q1
+        
+        # Calculate outlier bounds
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+        
+        # Identify outliers
+        outliers = data[(data < lower_bound) | (data > upper_bound)]
+        
+        # Store results
+        iqr_results[var] = {
+            'Q1': Q1, 'Q3': Q3, 'IQR': IQR,
+            'lower_bound': lower_bound, 'upper_bound': upper_bound,
+            'outliers': outliers, 'outlier_count': len(outliers),
+            'outlier_percentage': (len(outliers) / len(data)) * 100
+        }
+        
+        print(f"{description}:")
+        print(f"  Q1: {Q1:.2f}, Q3: {Q3:.2f}, IQR: {IQR:.2f}")
+        print(f"  Outlier bounds: [{lower_bound:.2f}, {upper_bound:.2f}]")
+        print(f"  Outliers: {len(outliers)} ({(len(outliers) / len(data) * 100):.1f}%)")
+        print(f"  Range: {data.min():.2f} to {data.max():.2f}")
+        print()
+
+# STEP 2: CORRELATION MATRIX ANALYSIS
+print("=" * 40)
+print("STEP 2: CORRELATION MATRIX ANALYSIS")
+print("=" * 40)
+
+# Select numeric columns for correlation analysis
+numeric_cols = dataset1.select_dtypes(include=[np.number]).columns
+correlation_data = dataset1[numeric_cols].dropna()
+
+# Calculate correlation matrix
+correlation_matrix = correlation_data.corr()
+
+print(f"Correlation matrix calculated for {len(numeric_cols)} numeric variables")
+print(f"Sample size for correlation analysis: {len(correlation_data)}\n")
+
+# Identify strong correlations
+print("Strong correlations identified:")
+strong_correlations = []
+
+for i in range(len(correlation_matrix.columns)):
+    for j in range(i+1, len(correlation_matrix.columns)):
+        var1 = correlation_matrix.columns[i]
+        var2 = correlation_matrix.columns[j]
+        corr_value = correlation_matrix.iloc[i, j]
+        
+        if abs(corr_value) >= 0.7:
+            strength = "Very strong"
+            strong_correlations.append((var1, var2, corr_value, strength))
+        elif abs(corr_value) >= 0.5:
+            strength = "Strong"
+            strong_correlations.append((var1, var2, corr_value, strength))
+        elif abs(corr_value) >= 0.3:
+            strength = "Moderate"
+            strong_correlations.append((var1, var2, corr_value, strength))
+
+# Sort by absolute correlation strength
+strong_correlations.sort(key=lambda x: abs(x[2]), reverse=True)
+
+if strong_correlations:
+    for var1, var2, corr, strength in strong_correlations[:15]:  # Show top 15
+        direction = "positive" if corr > 0 else "negative"
+        print(f"  {var1} ↔ {var2}: r={corr:.3f} ({strength} {direction})")
+else:
+    print("  No correlations stronger than |r| = 0.3 found")
+
+# Key correlations for hypothesis testing
+print(f"\nKey correlations for threat hypothesis testing:")
+threat_response_pairs = [
+    ('seconds_after_rat_arrival', 'bat_landing_to_food'),
+    ('rat_minutes', 'reward'),
+    ('rat_arrival_number', 'bat_landing_to_food'),
+    ('rat_arrival_number', 'reward')
+]
+
+for var1, var2 in threat_response_pairs:
+    if var1 in correlation_matrix.columns and var2 in correlation_matrix.columns:
+        corr_val = correlation_matrix.loc[var1, var2]
+        print(f"  {var1} → {var2}: r={corr_val:.3f}")
+
+# STEP 3: COMBINED VISUALIZATION
+print(f"\n" + "=" * 40)
+print("STEP 3: CREATING VISUALIZATIONS")
+print("=" * 40)
+
+# Create combined figure with IQR box plots and correlation heatmap
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8), facecolor='white')
+fig.suptitle('Phase 3.1: IQR Analysis and Correlation Mapping', fontsize=16, fontweight='bold')
+
+# Left panel: Box plots for IQR analysis
+box_data = []
+box_labels = []
+for var, description in key_variables.items():
+    if var in dataset1.columns:
+        box_data.append(dataset1[var].dropna())
+        box_labels.append(description.replace(' (', '\n('))
+
+bp = ax1.boxplot(box_data, labels=box_labels, patch_artist=True, notch=True)
+ax1.set_title('IQR Distributions of Key Variables', fontweight='bold')
+ax1.set_ylabel('Values')
+ax1.tick_params(axis='x', rotation=45, labelsize=10)
+
+# Color the box plots
+colors = ['steelblue', 'darkorange', 'seagreen', 'crimson']
+for patch, color in zip(bp['boxes'], colors):
+    patch.set_facecolor(color)
+    patch.set_alpha(0.7)
+
+# Add outlier count annotations
+for i, (var, description) in enumerate(key_variables.items()):
+    if var in iqr_results:
+        outlier_count = iqr_results[var]['outlier_count']
+        outlier_pct = iqr_results[var]['outlier_percentage']
+        ax1.text(i+1, ax1.get_ylim()[1] * 0.95, f'{outlier_count} outliers\n({outlier_pct:.1f}%)', 
+                ha='center', va='top', fontsize=9, fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
+
+# Right panel: Correlation heatmap
+# Focus on key variables for cleaner visualization
+key_vars_for_heatmap = ['bat_landing_to_food', 'seconds_after_rat_arrival', 'rat_minutes', 
+                       'rat_arrival_number', 'reward', 'risk', 'food_availability', 
+                       'hours_after_sunset_x', 'bat_landing_number']
+available_vars = [var for var in key_vars_for_heatmap if var in correlation_matrix.columns]
+heatmap_corr = correlation_matrix.loc[available_vars, available_vars]
+
+im = ax2.imshow(heatmap_corr, cmap='RdBu_r', aspect='auto', vmin=-1, vmax=1)
+ax2.set_title('Correlation Matrix (Key Variables)', fontweight='bold')
+
+# Add correlation values as text
+for i in range(len(available_vars)):
+    for j in range(len(available_vars)):
+        text = ax2.text(j, i, f'{heatmap_corr.iloc[i, j]:.2f}', 
+                       ha='center', va='center', color='white' if abs(heatmap_corr.iloc[i, j]) > 0.5 else 'black',
+                       fontsize=9, fontweight='bold')
+
+ax2.set_xticks(range(len(available_vars)))
+ax2.set_yticks(range(len(available_vars))) 
+ax2.set_xticklabels([var.replace('_', '\n') for var in available_vars], rotation=45, ha='right')
+ax2.set_yticklabels([var.replace('_', '\n') for var in available_vars])
+
+# Add colorbar
+cbar = plt.colorbar(im, ax=ax2, shrink=0.8)
+cbar.set_label('Correlation Coefficient', rotation=270, labelpad=20, fontweight='bold')
+
+plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+phase31_path = os.path.join(plots_dir, 'Phase3.1_IQR_and_Correlation_Analysis.png')
+plt.savefig(phase31_path, dpi=300, bbox_inches='tight', facecolor='white')
+plt.show()
+
+print(f"Saved Phase 3.1 analysis plot to: {phase31_path}")
+
+# STEP 4: KEY INSIGHTS SUMMARY
+print(f"\n" + "=" * 40)
+print("STEP 4: KEY STATISTICAL INSIGHTS")
+print("=" * 40)
+
+print("IQR Analysis Summary:")
+total_outliers = sum(result['outlier_count'] for result in iqr_results.values())
+print(f"  Total outliers identified: {total_outliers}")
+print(f"  Variables with highest outlier rates:")
+sorted_by_outliers = sorted(iqr_results.items(), key=lambda x: x[1]['outlier_percentage'], reverse=True)
+for var, result in sorted_by_outliers[:3]:
+    print(f"    {key_variables[var]}: {result['outlier_percentage']:.1f}% outliers")
+
+print(f"\nCorrelation Analysis Summary:")
+print(f"  {len(strong_correlations)} correlations found (|r| ≥ 0.3)")
+if strong_correlations:
+    print(f"  Strongest correlation: {strong_correlations[0][0]} ↔ {strong_correlations[0][1]} (r={strong_correlations[0][2]:.3f})")
+
+print(f"\nImplications for Hypothesis Testing:")
+print("  • IQR analysis will guide outlier treatment in statistical tests")
+print("  • Strong correlations identified may require multicollinearity checks")
+print("  • Distribution patterns inform choice of parametric vs non-parametric tests")
+print("  • Outlier patterns may reveal important behavioral extremes")
+
 #%%
 # ============================================================================
 # PHASE 4: HYPOTHESIS TESTING - THREAT GRADIENT ANALYSIS

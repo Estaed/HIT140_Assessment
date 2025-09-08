@@ -1,101 +1,126 @@
 # Investigation A: Bat Behavioral Analysis - Do Bats Perceive Rats as Predators?
 
-## 🚧 **PROJECT STATUS: IN PROGRESS - NOT FINISHED YET**
+## ✅ **PROJECT STATUS: COMPLETED**
 
-This project analyzes whether bats perceive rats as potential predators or competitors by examining behavioral patterns, vigilance responses, and using machine learning classification.
+This project analyzes whether bats perceive rats as potential predators or competitors by examining behavioral patterns, vigilance responses, and statistical analysis using two complementary datasets.
 
 ## Project Overview
 The investigation uses two datasets to analyze bat foraging behavior in the presence of rats:
 - **Dataset1**: Individual bat landing events with detailed behavioral analysis
 - **Dataset2**: Environmental context from 30-minute observation periods
 
-## File Structure and Current Implementation
+## File Structure and Implementation
 
-### 🤖 **investigation_A_ml.py** - ML-Enhanced Investigation (MAIN FILE)
-- **Status**: ✅ Recently updated with fixed ML classification
-- **Purpose**: Complete investigation with machine learning enhancement
+### 🤖 **investigation_A.py** - Main Analysis Script
+- **Status**: ✅ **COMPLETED** - Final version with comprehensive analysis
+- **Purpose**: Complete investigation with statistical analysis and hypothesis testing
 - **Key Features**:
-  - Uses SVM for competition vs predator classification
-  - Separates ambiguous 'bat_and_rat' behaviors into clear categories
-  - Vigilance-based training logic (fixed classification issue)
-  - Comprehensive statistical analysis with ML-separated categories
-- **Phases**:
-  - Phase 1: Data Loading and Risk-Reward Analysis
-  - Phase 2: Habit Classification and Data Cleaning
-  - Phase 3: Smart Imputation for Unknown Values
-  - Phase 4: ML Classification (Competition vs Predator)
-  - Phase 5: Enhanced Statistical Analysis
-  - Phase 6: Final Conclusions with ML Results
+  - Data loading and cleaning
+  - Risk-reward analysis and behavioral classification
+  - Statistical hypothesis testing (8 hypotheses)
+  - Generalized Linear Model (GLM) analysis
+  - Comprehensive visualization across 7 phases
+- **Analysis Phases**:
+  - **Phase 1**: Data Overview and Loading
+  - **Phase 2**: Classification Summary and Data Cleaning
+  - **Phase 3**: Threat Distributions and Behavioral Outcomes
+  - **Phase 3.1**: IQR Analysis and Correlation Mapping
+  - **Phase 4**: Hypotheses Overview (Threat to Response Analysis)
+  - **Phase 5**: GLM Effects on Feeding Success
+  - **Phase 6**: Final Summary and Verdict
 
-### 🧮 **ml_algorithm_comparison.py** - Algorithm Comparison Tool
-- **Status**: ✅ Updated with competition/predator terminology
-- **Purpose**: Tests and compares ML algorithms for classification
-- **Key Features**:
-  - Tests 13 different algorithms (KNN, SVM, Random Forest, etc.)
-  - Uses competition vs predator terminology (not bat vs rat)
-  - Cross-validation performance evaluation
-  - **Result**: SVM (Linear) identified as best performer
+## 📊 **Current Output Files**
 
-### 📊 **investigation_A.py** - Base Investigation (Legacy)
-- **Status**: ⚠️ Older version without ML enhancement
-- **Purpose**: Original investigation without ML classification
-- **Note**: Use `investigation_A_ml.py` for most current analysis
+### **Datasets** (`datasets/` folder):
+- `dataset1_cleaned.csv` - Cleaned individual bat landing events
+- `dataset1_merged_with_dataset2.csv` - Merged dataset with environmental context
 
-## 🔄 **Current Workflow**
+### **Visualizations** (`plots/` folder):
+- `Phase1_Data_Overview.png` - Initial data loading and overview
+- `Phase2_Classification_Summary.png` - Behavioral classification results
+- `Phase3_Threat_Distributions_and_Outcomes.png` - Threat analysis and outcomes
+- `Phase3.1_IQR_and_Correlation_Analysis.png` - Statistical distributions and correlations
+- `Phase4_Hypotheses_Overview_(Threat_to_Responses).png` - Hypothesis testing results
+- `Phase5_GLM_Effects_on_Feeding_Succes.png` - Statistical model effects
+- `Phase6_Final_Summary_and_Verdict.png` - Final conclusions and verdict
 
-### **Recommended Usage:**
-1. **Run ML-enhanced version**: `python investigation_A_ml.py`
-   - This includes all latest improvements and ML classification
-   - Fixes the classification bias issue
-   - Uses vigilance-based training for better results
+## 🎯 **Key Findings**
 
-### **Optional Algorithm Testing:**
-2. **Test algorithms**: `python ml_algorithm_comparison.py`
-   - Compare different ML approaches
-   - Validate SVM as best choice
+### **Hypotheses Tested (8 total)**:
+**Core Threat Gradient Hypotheses:**
+1. **H1**: **Temporal Proximity → Vigilance** - Bats show higher vigilance when rats recently arrived (negative correlation expected)
+2. **H2**: **Threat Intensity → Success** - Bats reduce feeding success with higher rat presence intensity (negative correlation expected)
+3. **H3**: **Threat Frequency → Vigilance** - Bats increase vigilance with more frequent rat encounters (positive correlation expected)
+4. **H4**: **Threat Frequency → Success** - Bats reduce feeding success when rat encounters are frequent (negative correlation expected)
 
-## 🎯 **Key Improvements Made**
+**Behavioral Response Hypotheses:**
+5. **H5**: **Risk-Taking Under Threat** - Bats reduce risk-taking behaviors under higher threat conditions (proximity, intensity, frequency)
+6. **H6**: **Defensive Behaviors Under Threat** - Bats show more defensive behaviors (cautious, slow approach, fight) with higher threat levels
+7. **H7**: **Time-of-Night Effects** - Anti-predator behavior changes with time (control variable for temporal effects)
+8. **H8**: **Composite Threat Response** - Overall threat index predicts increased vigilance and defensive behaviors
 
-### **Recently Fixed Issues:**
-- ✅ **Classification Bias**: Fixed issue where all bat_and_rat entries were classified as 'predator'
-- ✅ **Training Logic**: Switched from risk-reward only to vigilance-based classification
-- ✅ **Algorithm Choice**: Updated to use SVM (best performer from comparison)
-- ✅ **Terminology**: Consistent use of 'competition' vs 'predator' (clearer than 'bat' vs 'rat')
-
-### **Current ML Approach:**
-- **Training Data**: 
-  - Competition: Fast approach (vigilance <10s) + success patterns
-  - Predator: Cautious approach (vigilance >8s) + risk-taking patterns
-- **Classification**: SVM with linear kernel for bat_and_rat entries
-- **Feature Set**: Vigilance, timing, risk/reward, environmental factors
-
-## 📈 **Expected Results**
-The ML classification should now produce:
-- Mixed classification of bat_and_rat entries (both competition and predator behaviors)
-- More accurate behavioral separation based on vigilance patterns
-- Better statistical analysis with properly separated categories
-
-## ⚠️ **Still To Do**
-- [ ] Feature engineering improvements
-- [ ] Statistical analysis refinement
-- [ ] Performance optimization
-- [ ] Final validation and testing
-- [ ] Documentation completion
+### **Statistical Analysis**:
+- **Phase 3.1**: IQR analysis and correlation mapping for data quality assessment
+- **Phase 4**: Spearman correlation analysis for threat-response relationships  
+- **Phase 5**: Generalized Linear Model (GLM) analysis with controlled effects
+- **Phase 6**: Evidence-based verdict system and comprehensive statistical summary
 
 ## 🚀 **How to Run**
 
 ```bash
-# Run the main ML-enhanced investigation
-python investigation_A_ml.py
-
-# Optional: Test algorithm comparison
-python ml_algorithm_comparison.py
+# Run the complete investigation
+python investigation_A.py
 ```
 
-## 📁 **Output Files**
-- **Datasets**: `datasets/ml_analysis/` - Cleaned and classified data
-- **Plots**: `plots/ml_analysis/` - Visualization results for each phase
-- **Algorithm Comparison**: `plots/ml_algorithm_comparison.png`
+**Requirements**:
+- Python 3.x
+- Required packages: pandas, numpy, matplotlib, seaborn, scipy, scikit-learn
+
+## 📈 **Project Results**
+
+The investigation provides a comprehensive analysis of bat-rat interactions through:
+- **Behavioral Classification**: Categorizing bat behaviors as predator-avoidance or competition
+- **Statistical Analysis**: IQR analysis, correlation mapping, and distribution assessment
+- **Hypothesis Testing**: Rigorous hypothesis testing with evidence-based conclusions
+- **Visualization**: Seven detailed phases of analysis with clear visual outputs
+- **Final Verdict**: Evidence-based conclusion on whether bats perceive rats as predators
+
+## 📁 **Output Structure**
+
+```
+Investigation A/
+├── investigation_A.py          # Main analysis script
+├── dataset1.csv               # Original bat landing events
+├── dataset2.csv               # Original environmental data
+├── datasets/
+│   ├── dataset1_cleaned.csv
+│   └── dataset1_merged_with_dataset2.csv
+└── plots/
+    ├── Phase1_Data_Overview.png
+    ├── Phase2_Classification_Summary.png
+    ├── Phase3_Threat_Distributions_and_Outcomes.png
+    ├── Phase3.1_IQR_and_Correlation_Analysis.png
+    ├── Phase4_Hypotheses_Overview_(Threat_to_Responses).png
+    ├── Phase5_GLM_Effects_on_Feeding_Succes.png
+    └── Phase6_Final_Summary_and_Verdict.png
+```
+
+## 🔬 **Methodology**
+
+1. **Data Integration**: Merged individual bat events with environmental context
+2. **Behavioral Classification**: Categorized behaviors based on risk-reward patterns  
+3. **Statistical Quality Assessment**: IQR analysis, outlier detection, and correlation mapping
+4. **Hypothesis Testing**: Tested 8 specific hypotheses using threat gradient analysis
+5. **Multivariate Analysis**: GLM models controlling for confounding variables
+6. **Evidence Synthesis**: Combined statistical results into final verdict with evidence classification
+
+## 📚 **References**
+
+**GLM Methodology Source:**
+Chen, X., Harten, L., Rachum, A., Attia, L., & Yovel, Y. (2025). Complex competition interactions between Egyptian fruit bats and black rats in the real world. Mendeley Data, V2. https://data.mendeley.com/datasets/gt7j39b2cf/2
+
+*This project utilizes the Generalized Linear Model (GLM) methodology and statistical approaches described in the referenced research, which investigates similar bat-rat behavioral interactions using comparable datasets and analytical frameworks.*
 
 ---
-**Note**: This is an ongoing data science project for HIT140. The ML implementation has been recently updated and improved, but further refinement of feature engineering and statistical analysis is still in progress.
+
+**Note**: This is a completed data science project for HIT140. The analysis provides comprehensive evidence-based conclusions about bat-rat behavioral interactions through rigorous statistical methodology and clear visualization.

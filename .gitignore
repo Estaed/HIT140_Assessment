@@ -1,2 +1,57 @@
+# Project-level ignores
 Test A/
 .vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Packaging
+.eggs/
+*.egg-info/
+*.egg
+.installed.cfg
+build/
+develop-eggs/
+dist/
+downloads/
+lib/
+lib64/
+parts/
+sdist/
+var/
+.wheels/
+share/python-wheels/
+
+# Jupyter
+.ipynb_checkpoints
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+.pyre/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+*.code-workspace

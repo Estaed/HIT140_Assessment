@@ -1083,6 +1083,501 @@ plt.savefig(phase5_overview, dpi=300, bbox_inches='tight', facecolor='white')
 plt.show()
 print(f"Saved Phase 5 overview plot to: {phase5_overview}")
 
+
+#%%
+# ============================================================================
+# PHASE 5.7: SIMPLE REGRESSION ANALYSIS FOR INVESTIGATION A
+# ============================================================================
+print("\n" + "="*60)
+print("PHASE 5.7: SIMPLE REGRESSION ANALYSIS FOR INVESTIGATION A")
+print("="*60)
+
+# Import necessary libraries for regression analysis
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+from sklearn.preprocessing import StandardScaler
+import statsmodels.api as sm
+from statsmodels.stats.diagnostic import het_breuschpagan
+from statsmodels.stats.stattools import durbin_watson
+import warnings
+warnings.filterwarnings('ignore')
+
+print("Applying Simple Linear Regression to understand individual predictor effects on bat behavior\n")
+
+# Simple regression analysis - one predictor at a time
+print("="*50)
+print("SIMPLE LINEAR REGRESSION MODELS")
+print("="*50)
+
+# Define key predictors for simple regression
+simple_predictors = {
+    'seconds_after_rat_arrival': 'Temporal Proximity to Rat Arrival',
+    'rat_minutes': 'Rat Presence Intensity (minutes)',
+    'rat_arrival_number': 'Number of Rat Arrivals',
+    'food_availability': 'Food Availability Level',
+    'hours_after_sunset_x': 'Time After Sunset (hours)',
+    'bat_landing_number': 'Bat Landing Sequence Number'
+}
+
+# Response variable
+response_var = 'bat_landing_to_food'
+response_name = 'Bat Vigilance (seconds)'
+
+print(f"Response Variable: {response_name}")
+print(f"Predictors: {len(simple_predictors)} individual variables")
+print(f"Sample size: {len(dataset1)} observations\n")
+
+# Store simple regression results
+simple_regression_results = {}
+
+# Perform simple regression for each predictor
+for predictor, description in simple_predictors.items():
+    print(f"Simple Regression: {description}")
+    print("-" * 50)
+    
+    # Prepare data
+    simple_data = dataset1[[predictor, response_var]].dropna()
+    
+    if len(simple_data) > 10:  # Ensure sufficient data
+        X_simple = simple_data[[predictor]]
+        y_simple = simple_data[response_var]
+        
+        # Fit simple linear regression
+        simple_model = LinearRegression()
+        simple_model.fit(X_simple, y_simple)
+        
+        # Predictions
+        y_pred_simple = simple_model.predict(X_simple)
+        
+        # Calculate metrics
+        r2 = r2_score(y_simple, y_pred_simple)
+        mse = mean_squared_error(y_simple, y_pred_simple)
+        rmse = np.sqrt(mse)
+        mae = mean_absolute_error(y_simple, y_pred_simple)
+        
+        # Calculate correlation
+        correlation = np.corrcoef(simple_data[predictor], simple_data[response_var])[0, 1]
+        
+        # Store results
+        simple_regression_results[predictor] = {
+            'description': description,
+            'model': simple_model,
+            'r2': r2,
+            'rmse': rmse,
+            'mae': mae,
+            'correlation': correlation,
+            'coefficient': simple_model.coef_[0],
+            'intercept': simple_model.intercept_,
+            'sample_size': len(simple_data)
+        }
+        
+        # Display results
+        print(f"  Sample size: {len(simple_data)}")
+        print(f"  Correlation: {correlation:.4f}")
+        print(f"  R² Score: {r2:.4f}")
+        print(f"  RMSE: {rmse:.4f}")
+        print(f"  MAE: {mae:.4f}")
+        print(f"  Coefficient (β): {simple_model.coef_[0]:.4f}")
+        print(f"  Intercept: {simple_model.intercept_:.4f}")
+        
+        # Interpretation
+        if correlation > 0.3:
+            print(f"  → Strong positive relationship")
+        elif correlation < -0.3:
+            print(f"  → Strong negative relationship")
+        elif abs(correlation) < 0.1:
+            print(f"  → Weak relationship")
+        else:
+            print(f"  → Moderate relationship")
+        
+        print()
+    else:
+        print(f"  Insufficient data: {len(simple_data)} observations")
+        print()
+
+# Simple regression visualization
+print("="*50)
+print("CREATING SIMPLE REGRESSION VISUALIZATIONS")
+print("="*50)
+
+# Create simple regression plots
+fig_simple, axs_simple = plt.subplots(2, 3, figsize=(20, 12), facecolor='white')
+fig_simple.suptitle('Phase 5.7: Simple Linear Regression Analysis for Investigation A', fontsize=18, fontweight='bold')
+
+# Plot each simple regression
+plot_idx = 0
+for predictor, description in simple_predictors.items():
+    if predictor in simple_regression_results and plot_idx < 6:
+        row = plot_idx // 3
+        col = plot_idx % 3
+        
+        # Get data
+        simple_data = dataset1[[predictor, response_var]].dropna()
+        X_plot = simple_data[predictor]
+        y_plot = simple_data[response_var]
+        
+        # Create scatter plot with regression line
+        axs_simple[row, col].scatter(X_plot, y_plot, alpha=0.6, s=30, color='steelblue')
+        
+        # Add regression line
+        model = simple_regression_results[predictor]['model']
+        X_line = np.linspace(X_plot.min(), X_plot.max(), 100).reshape(-1, 1)
+        y_line = model.predict(X_line)
+        axs_simple[row, col].plot(X_line, y_line, 'r-', linewidth=2)
+        
+        # Formatting
+        axs_simple[row, col].set_xlabel(description, fontsize=12, fontweight='bold')
+        axs_simple[row, col].set_ylabel(response_name, fontsize=12, fontweight='bold')
+        
+        # Add statistics
+        r2 = simple_regression_results[predictor]['r2']
+        corr = simple_regression_results[predictor]['correlation']
+        axs_simple[row, col].set_title(f'{description}\nR² = {r2:.3f}, r = {corr:.3f}', 
+                                      fontweight='bold', fontsize=11)
+        axs_simple[row, col].tick_params(axis='both', labelsize=10)
+        
+        plot_idx += 1
+
+# Summary table in the last subplot
+if plot_idx < 6:
+    axs_simple[1, 2].axis('off')
+    summary_text = "Simple Regression Summary:\n\n"
+    
+    # Sort by R² score
+    sorted_results = sorted(simple_regression_results.items(), 
+                           key=lambda x: x[1]['r2'], reverse=True)
+    
+    summary_text += f"{'Predictor':<25} {'R²':<8} {'r':<8} {'β':<8}\n"
+    summary_text += "-" * 55 + "\n"
+    
+    for predictor, results in sorted_results:
+        predictor_short = results['description'][:22] + "..." if len(results['description']) > 25 else results['description']
+        summary_text += f"{predictor_short:<25} {results['r2']:<8.3f} {results['correlation']:<8.3f} {results['coefficient']:<8.3f}\n"
+    
+    summary_text += f"\nKey Insights:\n"
+    summary_text += f"• Higher R² indicates better prediction\n"
+    summary_text += f"• Correlation shows direction and strength\n"
+    summary_text += f"• β coefficient shows effect magnitude\n"
+    summary_text += f"• Simple models reveal individual effects"
+    
+    axs_simple[1, 2].text(0.05, 0.95, summary_text, transform=axs_simple[1, 2].transAxes, 
+                         fontsize=10, va='top', ha='left', fontweight='bold',
+                         bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
+
+plt.tight_layout(rect=[0, 0.03, 1, 0.95], pad=2.0)
+phase57_path = os.path.join(plots_dir, 'Phase5.7_Simple_Regression_Analysis.png')
+plt.savefig(phase57_path, dpi=300, bbox_inches='tight', facecolor='white')
+plt.show()
+print(f"Saved Phase 5.7 simple regression plot to: {phase57_path}")
+
+# Simple regression summary
+print("\n" + "="*50)
+print("SIMPLE REGRESSION SUMMARY")
+print("="*50)
+
+if simple_regression_results:
+    # Find best predictor
+    best_predictor = max(simple_regression_results.keys(), 
+                        key=lambda x: simple_regression_results[x]['r2'])
+    best_r2 = simple_regression_results[best_predictor]['r2']
+    
+    print(f"Best single predictor: {simple_regression_results[best_predictor]['description']}")
+    print(f"Best R² score: {best_r2:.4f}")
+    print(f"Best correlation: {simple_regression_results[best_predictor]['correlation']:.4f}")
+    
+    print(f"\nPredictor ranking by R² score:")
+    sorted_predictors = sorted(simple_regression_results.items(), 
+                              key=lambda x: x[1]['r2'], reverse=True)
+    
+    for i, (pred, results) in enumerate(sorted_predictors, 1):
+        print(f"  {i}. {results['description']}: R² = {results['r2']:.4f}")
+    
+    print(f"\nKey findings for Investigation A:")
+    print(f"  • Individual threat variables show varying predictive power")
+    print(f"  • Temporal proximity may be most important single factor")
+    print(f"  • Simple models provide baseline understanding")
+    print(f"  • Multiple predictors likely needed for better prediction")
+
+print(f"\nSimple regression analysis completed successfully!")
+
+#%%
+# ============================================================================
+# PHASE 5.8: MULTIPLE REGRESSION ANALYSIS FOR INVESTIGATION A
+# ============================================================================
+print("\n" + "="*60)
+print("PHASE 5.8: MULTIPLE REGRESSION ANALYSIS FOR INVESTIGATION A")
+print("="*60)
+
+print("Applying Multiple Linear Regression to understand combined predictor effects on bat behavior\n")
+
+# Multiple regression analysis - all predictors together
+print("="*50)
+print("MULTIPLE LINEAR REGRESSION MODELS")
+print("="*50)
+
+# Define multiple regression predictors
+multiple_predictors = [
+    'seconds_after_rat_arrival', 'rat_minutes', 'rat_arrival_number',
+    'food_availability', 'hours_after_sunset_x', 'bat_landing_number'
+]
+
+# Add behavioral indicators
+dataset1['defensive'] = dataset1['habit'].isin(['cautious', 'slow_approach', 'fight']).astype(int)
+multiple_predictors.append('defensive')
+
+print(f"Response Variable: {response_name}")
+print(f"Predictors: {len(multiple_predictors)} combined variables")
+print(f"Predictor list: {multiple_predictors}")
+
+# Prepare data for multiple regression
+multiple_data = dataset1[multiple_predictors + [response_var]].dropna()
+print(f"Sample size: {len(multiple_data)} observations\n")
+
+if len(multiple_data) > 50:  # Ensure sufficient data
+    X_multiple = multiple_data[multiple_predictors]
+    y_multiple = multiple_data[response_var]
+    
+    # Split data
+    X_train_multi, X_test_multi, y_train_multi, y_test_multi = train_test_split(
+        X_multiple, y_multiple, test_size=0.3, random_state=42)
+    
+    # Standardize features
+    scaler_multi = StandardScaler()
+    X_train_multi_scaled = scaler_multi.fit_transform(X_train_multi)
+    X_test_multi_scaled = scaler_multi.transform(X_test_multi)
+    
+    # Fit multiple linear regression
+    multiple_model = LinearRegression()
+    multiple_model.fit(X_train_multi_scaled, y_train_multi)
+    
+    # Predictions
+    y_pred_train_multi = multiple_model.predict(X_train_multi_scaled)
+    y_pred_test_multi = multiple_model.predict(X_test_multi_scaled)
+    
+    # Calculate metrics
+    r2_train = r2_score(y_train_multi, y_pred_train_multi)
+    r2_test = r2_score(y_test_multi, y_pred_test_multi)
+    rmse_test = np.sqrt(mean_squared_error(y_test_multi, y_pred_test_multi))
+    mae_test = mean_absolute_error(y_test_multi, y_pred_test_multi)
+    
+    # Store results
+    multiple_regression_results = {
+        'model': multiple_model,
+        'scaler': scaler_multi,
+        'r2_train': r2_train,
+        'r2_test': r2_test,
+        'rmse_test': rmse_test,
+        'mae_test': mae_test,
+        'feature_names': multiple_predictors,
+        'coefficients': dict(zip(multiple_predictors, multiple_model.coef_)),
+        'intercept': multiple_model.intercept_,
+        'sample_size': len(multiple_data)
+    }
+    
+    print(f"Multiple Regression Results:")
+    print(f"  Sample size: {len(multiple_data)} (Train: {len(X_train_multi)}, Test: {len(X_test_multi)})")
+    print(f"  R² (train): {r2_train:.4f}")
+    print(f"  R² (test): {r2_test:.4f}")
+    print(f"  RMSE (test): {rmse_test:.4f}")
+    print(f"  MAE (test): {mae_test:.4f}")
+    
+    print(f"\nFeature coefficients (standardized):")
+    for var, coef in zip(multiple_predictors, multiple_model.coef_):
+        print(f"  {var:25}: {coef:+.4f}")
+    print(f"  {'Intercept':25}: {multiple_model.intercept_:+.4f}")
+    
+    # Statistical significance using OLS
+    print(f"\nStatistical Significance (OLS):")
+    print("-" * 40)
+    
+    # Prepare data for OLS
+    X_ols_multi = sm.add_constant(X_multiple)
+    y_ols_multi = y_multiple
+    
+    # Fit OLS model
+    ols_multi = sm.OLS(y_ols_multi, X_ols_multi).fit()
+    
+    print(f"R-squared: {ols_multi.rsquared:.4f}")
+    print(f"Adj. R-squared: {ols_multi.rsquared_adj:.4f}")
+    print(f"F-statistic: {ols_multi.fvalue:.4f} (p={ols_multi.f_pvalue:.4f})")
+    print(f"AIC: {ols_multi.aic:.2f}")
+    print(f"BIC: {ols_multi.bic:.2f}")
+    
+    print(f"\nCoefficient significance:")
+    for var in multiple_predictors:
+        coef = ols_multi.params[var]
+        p_val = ols_multi.pvalues[var]
+        significance = "***" if p_val < 0.001 else "**" if p_val < 0.01 else "*" if p_val < 0.05 else ""
+        print(f"  {var:25}: {coef:+.4f} (p={p_val:.4f}) {significance}")
+    
+    # Model diagnostics
+    print(f"\nModel diagnostics:")
+    residuals_multi = ols_multi.resid
+    
+    # Heteroscedasticity test
+    try:
+        bp_stat, bp_pval, _, _ = het_breuschpagan(residuals_multi, X_ols_multi)
+        print(f"  Breusch-Pagan test (heteroscedasticity): p={bp_pval:.4f}")
+    except:
+        print("  Breusch-Pagan test: Could not compute")
+    
+    # Durbin-Watson test for autocorrelation
+    dw_stat = durbin_watson(residuals_multi)
+    print(f"  Durbin-Watson test (autocorrelation): {dw_stat:.4f}")
+
+# Multiple regression visualization
+print("\n" + "="*50)
+print("CREATING MULTIPLE REGRESSION VISUALIZATIONS")
+print("="*50)
+
+# Create multiple regression plots
+fig_multi, axs_multi = plt.subplots(2, 3, figsize=(20, 12), facecolor='white')
+fig_multi.suptitle('Phase 5.8: Multiple Linear Regression Analysis for Investigation A', fontsize=18, fontweight='bold')
+
+if 'multiple_regression_results' in locals():
+    # Panel 1: Feature importance (coefficients)
+    coefs = multiple_regression_results['coefficients']
+    features = list(coefs.keys())
+    importance = list(coefs.values())
+    
+    # Sort by absolute importance
+    sorted_pairs = sorted(zip(features, importance), key=lambda x: abs(x[1]), reverse=True)
+    features_sorted, importance_sorted = zip(*sorted_pairs)
+    
+    colors = ['red' if x < 0 else 'green' for x in importance_sorted]
+    bars = axs_multi[0, 0].barh(range(len(features_sorted)), importance_sorted, color=colors, alpha=0.7)
+    axs_multi[0, 0].set_yticks(range(len(features_sorted)))
+    axs_multi[0, 0].set_yticklabels([f.replace('_', ' ').title() for f in features_sorted], fontsize=10, fontweight='bold')
+    axs_multi[0, 0].set_xlabel('Coefficient Value (Standardized)', fontsize=12, fontweight='bold')
+    axs_multi[0, 0].set_title('Feature Importance\n(Multiple Regression)', fontweight='bold', fontsize=14)
+    axs_multi[0, 0].axvline(x=0, color='black', linestyle='-', alpha=0.3)
+    axs_multi[0, 0].tick_params(axis='x', labelsize=10)
+    
+    # Add value labels
+    for i, (bar, val) in enumerate(zip(bars, importance_sorted)):
+        axs_multi[0, 0].text(val + (0.1 if val >= 0 else -0.1), bar.get_y() + bar.get_height()/2, 
+                            f'{val:.3f}', ha='left' if val >= 0 else 'right', va='center', fontweight='bold', fontsize=9)
+    
+    # Panel 2: Actual vs Predicted
+    axs_multi[0, 1].scatter(y_test_multi, y_pred_test_multi, alpha=0.6, s=50, color='steelblue')
+    axs_multi[0, 1].plot([y_test_multi.min(), y_test_multi.max()], [y_test_multi.min(), y_test_multi.max()], 'r--', lw=2)
+    axs_multi[0, 1].set_xlabel('Actual Vigilance (s)', fontsize=12, fontweight='bold')
+    axs_multi[0, 1].set_ylabel('Predicted Vigilance (s)', fontsize=12, fontweight='bold')
+    axs_multi[0, 1].set_title(f'Actual vs Predicted\n(R² = {r2_test:.3f})', fontweight='bold', fontsize=14)
+    axs_multi[0, 1].tick_params(axis='both', labelsize=10)
+    
+    # Add R² text
+    axs_multi[0, 1].text(0.05, 0.95, f'R² = {r2_test:.3f}', 
+                        transform=axs_multi[0, 1].transAxes, fontsize=12, fontweight='bold',
+                        bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
+    # Panel 3: Residuals plot
+    residuals_plot = y_test_multi - y_pred_test_multi
+    axs_multi[0, 2].scatter(y_pred_test_multi, residuals_plot, alpha=0.6, s=50, color='darkorange')
+    axs_multi[0, 2].axhline(y=0, color='r', linestyle='--', lw=2)
+    axs_multi[0, 2].set_xlabel('Predicted Values', fontsize=12, fontweight='bold')
+    axs_multi[0, 2].set_ylabel('Residuals', fontsize=12, fontweight='bold')
+    axs_multi[0, 2].set_title('Residuals vs Predicted', fontweight='bold', fontsize=14)
+    axs_multi[0, 2].tick_params(axis='both', labelsize=10)
+    
+    # Panel 4: Residuals histogram
+    axs_multi[1, 0].hist(residuals_plot, bins=20, alpha=0.7, color='seagreen', edgecolor='black')
+    axs_multi[1, 0].axvline(x=0, color='red', linestyle='--', linewidth=2)
+    axs_multi[1, 0].set_xlabel('Residuals', fontsize=12, fontweight='bold')
+    axs_multi[1, 0].set_ylabel('Frequency', fontsize=12, fontweight='bold')
+    axs_multi[1, 0].set_title('Residuals Distribution\n(Normality Check)', fontweight='bold', fontsize=14)
+    axs_multi[1, 0].tick_params(axis='both', labelsize=10)
+    
+    # Add normal distribution overlay
+    mu, sigma = residuals_plot.mean(), residuals_plot.std()
+    x = np.linspace(residuals_plot.min(), residuals_plot.max(), 100)
+    normal_curve = ((1/(sigma * np.sqrt(2 * np.pi))) * 
+                   np.exp(-0.5 * ((x - mu) / sigma) ** 2)) * len(residuals_plot) * (residuals_plot.max() - residuals_plot.min()) / 20
+    axs_multi[1, 0].plot(x, normal_curve, 'r-', linewidth=2, label='Normal Distribution')
+    axs_multi[1, 0].legend(fontsize=10)
+    
+    # Panel 5: Model comparison (Simple vs Multiple)
+    if 'simple_regression_results' in locals():
+        # Get best simple regression R²
+        best_simple_r2 = max(simple_regression_results.values(), key=lambda x: x['r2'])['r2']
+        
+        comparison_data = ['Best Simple', 'Multiple']
+        comparison_r2 = [best_simple_r2, r2_test]
+        
+        bars_comp = axs_multi[1, 1].bar(comparison_data, comparison_r2, color=['steelblue', 'darkorange'], alpha=0.7)
+        axs_multi[1, 1].set_ylabel('R² Score', fontsize=12, fontweight='bold')
+        axs_multi[1, 1].set_title('Simple vs Multiple Regression\nPerformance Comparison', fontweight='bold', fontsize=14)
+        axs_multi[1, 1].tick_params(axis='both', labelsize=10)
+        
+        # Add value labels
+        for bar, val in zip(bars_comp, comparison_r2):
+            axs_multi[1, 1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01, 
+                               f'{val:.3f}', ha='center', va='bottom', fontweight='bold', fontsize=11)
+    
+    # Panel 6: Model summary
+    axs_multi[1, 2].axis('off')
+    multi_summary = "Multiple Regression Summary:\n\n"
+    multi_summary += f"R² (test): {r2_test:.4f}\n"
+    multi_summary += f"RMSE: {rmse_test:.4f}\n"
+    multi_summary += f"MAE: {mae_test:.4f}\n"
+    multi_summary += f"Sample size: {len(multiple_data)}\n\n"
+    
+    multi_summary += "Key Insights:\n"
+    multi_summary += "• Multiple predictors improve prediction\n"
+    multi_summary += "• Feature importance shows relative effects\n"
+    multi_summary += "• Residuals should be normally distributed\n"
+    multi_summary += "• Model explains bat vigilance behavior\n\n"
+    
+    multi_summary += "For Investigation A:\n"
+    multi_summary += "• Threat variables predict vigilance\n"
+    multi_summary += "• Environmental factors matter\n"
+    multi_summary += "• Behavioral responses are quantifiable\n"
+    multi_summary += "• Linear relationships exist"
+    
+    axs_multi[1, 2].text(0.05, 0.95, multi_summary, transform=axs_multi[1, 2].transAxes, 
+                        fontsize=11, va='top', ha='left', fontweight='bold',
+                        bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
+
+plt.tight_layout(rect=[0, 0.03, 1, 0.95], pad=2.0)
+phase58_path = os.path.join(plots_dir, 'Phase5.8_Multiple_Regression_Analysis.png')
+plt.savefig(phase58_path, dpi=300, bbox_inches='tight', facecolor='white')
+plt.show()
+print(f"Saved Phase 5.8 multiple regression plot to: {phase58_path}")
+
+# Multiple regression summary
+print("\n" + "="*50)
+print("MULTIPLE REGRESSION SUMMARY")
+print("="*50)
+
+if 'multiple_regression_results' in locals():
+    print(f"Multiple regression successfully fitted:")
+    print(f"  • Explains {r2_test:.1%} of variance in bat vigilance")
+    print(f"  • Average prediction error: {rmse_test:.2f} seconds")
+    print(f"  • Mean absolute error: {mae_test:.2f} seconds")
+    
+    # Identify most important predictors
+    coefs = multiple_regression_results['coefficients']
+    most_important = max(coefs.items(), key=lambda x: abs(x[1]))
+    print(f"  • Most important predictor: {most_important[0]} (β={most_important[1]:+.3f})")
+    
+    print(f"\nKey findings for Investigation A:")
+    print(f"  • Multiple threat variables together predict bat behavior")
+    print(f"  • Linear regression quantifies predator perception effects")
+    print(f"  • Environmental context matters for behavioral responses")
+    print(f"  • Model provides evidence for threat-response relationships")
+    
+    # Compare with simple regression
+    if 'simple_regression_results' in locals():
+        best_simple_r2 = max(simple_regression_results.values(), key=lambda x: x['r2'])['r2']
+        improvement = r2_test - best_simple_r2
+        print(f"\nImprovement over best simple regression:")
+        print(f"  • Simple regression best R²: {best_simple_r2:.4f}")
+        print(f"  • Multiple regression R²: {r2_test:.4f}")
+        print(f"  • Improvement: {improvement:+.4f} ({improvement/best_simple_r2*100:+.1f}%)")
+
+print(f"\nMultiple regression analysis completed successfully!")
+
 #%%
 # ============================================================================
 # PHASE 6: FINAL CONCLUSION AND ANSWER

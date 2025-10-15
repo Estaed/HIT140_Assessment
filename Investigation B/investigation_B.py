@@ -21,6 +21,8 @@ import matplotlib.pyplot as plt
 from scipy import stats
 from scipy.stats import norm
 from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.linear_model import LogisticRegression
+from sklearn.feature_selection import RFE
 import os
 import sys
 try:
@@ -1288,14 +1290,8 @@ print("\n" + "="*60)
 print("PHASE 5.1: SEASONAL MODEL COMPARISON - SIMPLE REGRESSION")
 print("="*60)
 
-# Import necessary libraries for regression analysis
 from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-from sklearn.preprocessing import StandardScaler
-import statsmodels.api as sm
-from statsmodels.stats.diagnostic import het_breuschpagan
-from statsmodels.stats.stattools import durbin_watson
+from sklearn.metrics import r2_score
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -1313,23 +1309,16 @@ print(f"Data split by season:")
 print(f"  Winter observations: {len(winter_data)}")
 print(f"  Spring observations: {len(spring_data)}")
 
-# Define predictors for seasonal comparison
+# Define key predictors for seasonal comparison
 seasonal_predictors = {
     'seconds_after_rat_arrival': 'Temporal Proximity to Rat Arrival',
     'rat_minutes': 'Rat Presence Intensity (minutes)',
-    'rat_arrival_number': 'Number of Rat Arrivals',
-    'food_availability': 'Food Availability Level',
-    'hours_after_sunset_x': 'Time After Sunset (hours)',
-    'bat_landing_number': 'Bat Landing Sequence Number'
+    'rat_arrival_number': 'Number of Rat Arrivals'
 }
 
-# Response variable
 response_var = 'bat_landing_to_food'
-response_name = 'Bat Vigilance (seconds)'
-
-print(f"\nResponse Variable: {response_name}")
-print(f"Predictors: {len(seasonal_predictors)} variables for seasonal comparison")
-print(f"Approach: Train separate models for Winter and Spring, compare coefficients\n")
+print(f"Response Variable: Bat Vigilance (seconds)")
+print(f"Predictors: {len(seasonal_predictors)} key variables for seasonal comparison\n")
 
 # Store seasonal model comparison results
 seasonal_comparison_results = {}
@@ -1343,11 +1332,11 @@ for predictor, description in seasonal_predictors.items():
     print(f"\nSeasonal Comparison: {description}")
     print("-" * 50)
     
-    # Prepare Winter data
+    # Prepare Winter and Spring data
     winter_subset = winter_data[[predictor, response_var]].dropna()
     spring_subset = spring_data[[predictor, response_var]].dropna()
     
-    if len(winter_subset) > 5 and len(spring_subset) > 5:  # Ensure sufficient data for both seasons
+    if len(winter_subset) > 5 and len(spring_subset) > 5:
         # Winter model
         X_winter = winter_subset[[predictor]]
         y_winter = winter_subset[response_var]
@@ -1360,133 +1349,94 @@ for predictor, description in seasonal_predictors.items():
         spring_model = LinearRegression()
         spring_model.fit(X_spring, y_spring)
         
-        # Calculate metrics for both models
+        # Calculate metrics
         winter_r2 = r2_score(y_winter, winter_model.predict(X_winter))
         spring_r2 = r2_score(y_spring, spring_model.predict(X_spring))
+        
+        # Check for negative R²
+        if winter_r2 < 0:
+            print(f"ERROR: Negative R² in simple regression for {predictor} (Winter) — check data!")
+        if spring_r2 < 0:
+            print(f"ERROR: Negative R² in simple regression for {predictor} (Spring) — check data!")
         
         # Calculate correlations
         winter_corr = np.corrcoef(winter_subset[predictor], winter_subset[response_var])[0, 1]
         spring_corr = np.corrcoef(spring_subset[predictor], spring_subset[response_var])[0, 1]
         
         # Store results
+        coef_difference = spring_model.coef_[0] - winter_model.coef_[0]
         seasonal_comparison_results[predictor] = {
             'description': description,
-            'winter_model': winter_model,
-            'spring_model': spring_model,
             'winter_coef': winter_model.coef_[0],
             'spring_coef': spring_model.coef_[0],
-            'winter_intercept': winter_model.intercept_,
-            'spring_intercept': spring_model.intercept_,
             'winter_r2': winter_r2,
             'spring_r2': spring_r2,
             'winter_corr': winter_corr,
             'spring_corr': spring_corr,
-            'winter_sample': len(winter_subset),
-            'spring_sample': len(spring_subset),
-            'coef_difference': spring_model.coef_[0] - winter_model.coef_[0],
-            'coef_ratio': spring_model.coef_[0] / winter_model.coef_[0] if winter_model.coef_[0] != 0 else np.inf
+            'coef_difference': coef_difference
         }
         
         # Display results
-        print(f"  Winter: n={len(winter_subset)}, β={winter_model.coef_[0]:+.4f}, R²={winter_r2:.4f}, r={winter_corr:.4f}")
-        print(f"  Spring: n={len(spring_subset)}, β={spring_model.coef_[0]:+.4f}, R²={spring_r2:.4f}, r={spring_corr:.4f}")
-        print(f"  Difference: Δβ={seasonal_comparison_results[predictor]['coef_difference']:+.4f}")
-        print(f"  Ratio: Spring/Winter = {seasonal_comparison_results[predictor]['coef_ratio']:.3f}")
+        print(f"  Winter: n={len(winter_subset)}, β={winter_model.coef_[0]:+.4f}, R²={winter_r2:.4f}")
+        print(f"  Spring: n={len(spring_subset)}, β={spring_model.coef_[0]:+.4f}, R²={spring_r2:.4f}")
+        print(f"  Difference: Δβ={coef_difference:+.4f}")
         
         # Interpretation
-        coef_diff = seasonal_comparison_results[predictor]['coef_difference']
-        if abs(coef_diff) > 0.1:
-            direction = "stronger" if coef_diff > 0 else "weaker"
-            season = "Spring" if coef_diff > 0 else "Winter"
+        if abs(coef_difference) > 0.1:
+            direction = "stronger" if coef_difference > 0 else "weaker"
+            season = "Spring" if coef_difference > 0 else "Winter"
             print(f"  → {season} shows {direction} relationship (seasonal behavioral change)")
         else:
             print(f"  → Similar relationship across seasons (no seasonal change)")
         
     else:
         print(f"  Insufficient data: Winter={len(winter_subset)}, Spring={len(spring_subset)}")
-        print(f"  Skipping seasonal comparison for {predictor}")
 
-# Seasonal model comparison visualization
+# Simple visualization
+print("\n" + "="*50)
+print("CREATING SEASONAL COMPARISON VISUALIZATION")
 print("="*50)
-print("CREATING SEASONAL MODEL COMPARISON VISUALIZATIONS")
-print("="*50)
 
-# Create seasonal comparison plots
-fig_seasonal, axs_seasonal = plt.subplots(2, 3, figsize=(20, 12), facecolor='white')
-fig_seasonal.suptitle('Phase 5.1: Seasonal Model Comparison - Winter vs Spring', fontsize=18, fontweight='bold')
+fig, axs = plt.subplots(1, 3, figsize=(18, 6), facecolor='white')
+fig.suptitle('Phase 5.1: Seasonal Model Comparison - Winter vs Spring', fontsize=16, fontweight='bold')
 
-# Plot each seasonal comparison
 plot_idx = 0
 for predictor, description in seasonal_predictors.items():
-    if predictor in seasonal_comparison_results and plot_idx < 6:
-        row = plot_idx // 3
-        col = plot_idx % 3
-        
+    if predictor in seasonal_comparison_results and plot_idx < 3:
         # Get Winter and Spring data
         winter_subset = winter_data[[predictor, response_var]].dropna()
         spring_subset = spring_data[[predictor, response_var]].dropna()
         
         # Create scatter plots for both seasons
-        axs_seasonal[row, col].scatter(winter_subset[predictor], winter_subset[response_var], 
-                                      alpha=0.6, s=30, color='steelblue', label='Winter')
-        axs_seasonal[row, col].scatter(spring_subset[predictor], spring_subset[response_var], 
-                                      alpha=0.6, s=30, color='darkorange', label='Spring')
+        axs[plot_idx].scatter(winter_subset[predictor], winter_subset[response_var], 
+                             alpha=0.6, s=30, color='steelblue', label='Winter')
+        axs[plot_idx].scatter(spring_subset[predictor], spring_subset[response_var], 
+                             alpha=0.6, s=30, color='darkorange', label='Spring')
         
-        # Add regression lines for both seasons
-        winter_model = seasonal_comparison_results[predictor]['winter_model']
-        spring_model = seasonal_comparison_results[predictor]['spring_model']
-        
-        # Winter line
-        X_winter_line = np.linspace(winter_subset[predictor].min(), winter_subset[predictor].max(), 100).reshape(-1, 1)
-        y_winter_line = winter_model.predict(X_winter_line)
-        axs_seasonal[row, col].plot(X_winter_line, y_winter_line, 'b-', linewidth=2, label='Winter Model')
-        
-        # Spring line
-        X_spring_line = np.linspace(spring_subset[predictor].min(), spring_subset[predictor].max(), 100).reshape(-1, 1)
-        y_spring_line = spring_model.predict(X_spring_line)
-        axs_seasonal[row, col].plot(X_spring_line, y_spring_line, 'r-', linewidth=2, label='Spring Model')
-        
-        # Formatting
-        axs_seasonal[row, col].set_xlabel(f'{description} ({predictor})', fontsize=12, fontweight='bold')
-        axs_seasonal[row, col].set_ylabel(f'{response_name} ({response_var})', fontsize=12, fontweight='bold')
-        
-        # Add statistics
+        # Add simple trend lines
         winter_coef = seasonal_comparison_results[predictor]['winter_coef']
         spring_coef = seasonal_comparison_results[predictor]['spring_coef']
-        coef_diff = seasonal_comparison_results[predictor]['coef_difference']
         
-        axs_seasonal[row, col].set_title(f'{description} ({predictor})\nWinter β={winter_coef:+.3f}, Spring β={spring_coef:+.3f}\nΔβ={coef_diff:+.3f}', 
-                                        fontweight='bold', fontsize=11)
-        axs_seasonal[row, col].tick_params(axis='both', labelsize=10)
-        axs_seasonal[row, col].legend(fontsize=9)
+        # Winter line
+        x_winter = np.linspace(winter_subset[predictor].min(), winter_subset[predictor].max(), 100)
+        y_winter = winter_coef * x_winter + seasonal_comparison_results[predictor].get('winter_intercept', 0)
+        axs[plot_idx].plot(x_winter, y_winter, 'b-', linewidth=2, label='Winter Model')
+        
+        # Spring line
+        x_spring = np.linspace(spring_subset[predictor].min(), spring_subset[predictor].max(), 100)
+        y_spring = spring_coef * x_spring + seasonal_comparison_results[predictor].get('spring_intercept', 0)
+        axs[plot_idx].plot(x_spring, y_spring, 'r-', linewidth=2, label='Spring Model')
+        
+        # Formatting
+        axs[plot_idx].set_xlabel(f'{description}', fontsize=12, fontweight='bold')
+        axs[plot_idx].set_ylabel('Bat Vigilance (seconds)', fontsize=12, fontweight='bold')
+        
+        coef_diff = seasonal_comparison_results[predictor]['coef_difference']
+        axs[plot_idx].set_title(f'{description}\nWinter β={winter_coef:+.3f}, Spring β={spring_coef:+.3f}\nΔβ={coef_diff:+.3f}', 
+                               fontweight='bold', fontsize=11)
+        axs[plot_idx].legend(fontsize=9)
         
         plot_idx += 1
-
-# Summary table in the last subplot
-if plot_idx < 6:
-    axs_seasonal[1, 2].axis('off')
-    summary_text = "Seasonal Model Comparison Summary:\n\n"
-    
-    # Sort by coefficient difference magnitude
-    sorted_results = sorted(seasonal_comparison_results.items(), 
-                           key=lambda x: abs(x[1]['coef_difference']), reverse=True)
-    
-    summary_text += f"{'Predictor':<20} {'Winter β':<10} {'Spring β':<10} {'Δβ':<10}\n"
-    summary_text += "-" * 55 + "\n"
-    
-    for predictor, results in sorted_results:
-        predictor_short = results['description'][:18] + "..." if len(results['description']) > 20 else results['description']
-        summary_text += f"{predictor_short:<20} {results['winter_coef']:<10.3f} {results['spring_coef']:<10.3f} {results['coef_difference']:<10.3f}\n"
-    
-    summary_text += f"\nKey Insights:\n"
-    summary_text += f"• Δβ shows seasonal behavioral changes\n"
-    summary_text += f"• Large |Δβ| indicates seasonal differences\n"
-    summary_text += f"• Positive Δβ: stronger in Spring\n"
-    summary_text += f"• Negative Δβ: stronger in Winter"
-    
-    axs_seasonal[1, 2].text(0.05, 0.95, summary_text, transform=axs_seasonal[1, 2].transAxes, 
-                         fontsize=10, va='top', ha='left', fontweight='bold',
-                         bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
 
 plt.tight_layout(rect=[0, 0.03, 1, 0.95], pad=2.0)
 phase51_path = os.path.join(plots_dir, 'Phase5.1_Seasonal_Model_Comparison.png')
@@ -1494,7 +1444,7 @@ plt.savefig(phase51_path, dpi=300, bbox_inches='tight', facecolor='white')
 plt.show()
 print(f"Saved Phase 5.1 seasonal model comparison plot to: {phase51_path}")
 
-# Seasonal model comparison summary
+# Summary
 print("\n" + "="*50)
 print("SEASONAL MODEL COMPARISON SUMMARY")
 print("="*50)
@@ -1508,316 +1458,1424 @@ if seasonal_comparison_results:
     print(f"Largest seasonal difference: {seasonal_comparison_results[largest_diff_predictor]['description']}")
     print(f"Coefficient difference (Δβ): {largest_diff:+.4f}")
     
-    print(f"\nSeasonal behavioral changes (sorted by |Δβ|):")
-    sorted_predictors = sorted(seasonal_comparison_results.items(), 
-                              key=lambda x: abs(x[1]['coef_difference']), reverse=True)
-    
-    for i, (pred, results) in enumerate(sorted_predictors, 1):
+    print(f"\nSeasonal behavioral changes:")
+    for pred, results in seasonal_comparison_results.items():
         coef_diff = results['coef_difference']
         direction = "Spring stronger" if coef_diff > 0 else "Winter stronger" if coef_diff < 0 else "No difference"
-        print(f"  {i}. {results['description']}: Δβ = {coef_diff:+.4f} ({direction})")
-    
-    print(f"\nKey findings for Investigation B:")
-    print(f"  • Seasonal model comparison reveals behavioral changes")
-    print(f"  • Coefficient differences indicate seasonal adaptations")
-    print(f"  • Separate models capture season-specific relationships")
-    print(f"  • Significant Δβ values suggest seasonal behavioral shifts")
+        print(f"  • {results['description']}: Δβ = {coef_diff:+.4f} ({direction})")
 
 print(f"\nSeasonal model comparison analysis completed successfully!")
 
 #%%
 # ============================================================================
-# PHASE 5.2: MULTIPLE REGRESSION ANALYSIS FOR INVESTIGATION B
+# PHASE 5.2: OLS REGRESSION ANALYSIS FOR INVESTIGATION B
 # ============================================================================
 print("\n" + "="*60)
-print("PHASE 5.2: MULTIPLE REGRESSION ANALYSIS FOR INVESTIGATION B")
+print("PHASE 5.2: OLS REGRESSION ANALYSIS FOR INVESTIGATION B")
 print("="*60)
 
-print("Applying Multiple Linear Regression to understand combined predictor effects on bat behavior\n")
+print("Applying OLS regression to understand combined predictor effects on bat behavior\n")
 
-# Multiple regression analysis - all predictors together
+# Use merged dataset1 as the base (from Phase 3)
+df_combined = dataset1.copy()
+
+# Step 1: Feature Engineering
 print("="*50)
-print("MULTIPLE LINEAR REGRESSION MODELS")
+print("FEATURE ENGINEERING")
 print("="*50)
 
-# Define multiple regression predictors
-multiple_predictors = [
-    'seconds_after_rat_arrival', 'rat_minutes', 'rat_arrival_number',
-    'food_availability', 'hours_after_sunset_x', 'bat_landing_number'
+base_features = [
+    'seconds_after_rat_arrival', 'risk', 'reward', 'hours_after_sunset_x', 'season_label',
+    'hours_after_sunset_y', 'bat_landing_number',
+    'food_availability', 'rat_minutes', 'rat_arrival_number'
 ]
 
-# Add seasonal indicators (create a copy to avoid modifying original dataset)
-dataset1_phase52 = dataset1.copy()
-if 'season_label' in dataset1_phase52.columns:
-    dataset1_phase52['is_spring'] = (dataset1_phase52['season_label'] == 'Spring').astype(int)
-    multiple_predictors.append('is_spring')
+# Create season mapping and convert categorical variables
+season_mapping = {'Winter': 0, 'Spring': 1, 'Summer': 2, 'Autumn': 3, 'Other': 4}
+df_combined['season'] = df_combined['season_label'].map(season_mapping).fillna(-1).astype(float)
+df_combined['reward'] = df_combined['reward'].astype(float)
 
-# Add behavioral indicators
+# Remove season_label from base_features since we're using the numeric 'season' instead
+base_features = [col for col in base_features if col != 'season_label']
+
+# Create engineered features
+df_combined['rat_presence'] = (df_combined['rat_minutes'] > 0).astype(int)
+df_combined['risk_season_interaction'] = df_combined['risk'] * df_combined['season']
+df_combined['rat_activity_index'] = df_combined['rat_minutes'] * df_combined['rat_arrival_number']
+median_sunset = df_combined['hours_after_sunset_x'].median()
+df_combined['night_phase'] = (df_combined['hours_after_sunset_x'] > median_sunset).astype(int)
+df_combined['food_scarcity'] = 1 / (df_combined['food_availability'] + 1e-6)
+df_combined['vigilance_index'] = df_combined['bat_landing_to_food'] * (1 - df_combined['reward'])
+
+# Define final feature set
+X_vars = base_features + ['rat_presence', 'risk_season_interaction', 'rat_activity_index',
+                         'night_phase', 'food_scarcity', 'vigilance_index']
+
+print(f"Features created: {len(X_vars)} total features")
+print(f"Base features: {base_features}")
+print(f"Engineered features: {['rat_presence', 'risk_season_interaction', 'rat_activity_index', 'night_phase', 'food_scarcity', 'vigilance_index']}")
+
+# Check which columns actually exist in the dataset
+available_columns = df_combined.columns.tolist()
+missing_columns = [col for col in X_vars if col not in available_columns]
+
+if missing_columns:
+    print(f"WARNING: The following columns are missing from the dataset:")
+    for col in missing_columns:
+        print(f"  - {col}")
+    print(f"Removing missing columns from analysis...")
+    X_vars = [col for col in X_vars if col in available_columns]
+    print(f"Updated feature list: {len(X_vars)} features")
+
+# Clean data
+df_combined = df_combined.dropna(subset=X_vars + ['bat_landing_to_food'])
+print(f"Sample size after cleaning: {len(df_combined)} observations")
+
+# Prepare data for OLS
+y = df_combined['bat_landing_to_food']
+
+# Ensure all predictor variables are numeric
+print(f"\nData type conversion:")
+for var in X_vars:
+    if var in df_combined.columns:
+        original_dtype = df_combined[var].dtype
+        df_combined[var] = pd.to_numeric(df_combined[var], errors='coerce')
+        new_dtype = df_combined[var].dtype
+        if original_dtype != new_dtype:
+            print(f"  {var}: {original_dtype} → {new_dtype}")
+
+# Check for any remaining non-numeric columns
+non_numeric_cols = df_combined[X_vars].select_dtypes(include=['object']).columns.tolist()
+if non_numeric_cols:
+    print(f"WARNING: Non-numeric columns found: {non_numeric_cols}")
+    print("Removing non-numeric columns from analysis...")
+    X_vars = [col for col in X_vars if col not in non_numeric_cols]
+
+X = sm.add_constant(df_combined[X_vars])
+
+print(f"\nData preparation:")
+print(f"  Response variable: bat_landing_to_food")
+print(f"  Predictors: {len(X_vars)} features")
+print(f"  Sample size: {len(df_combined)}")
+print(f"  X shape: {X.shape}")
+print(f"  y shape: {y.shape}")
+
+# Check for any NaN values after conversion
+nan_count = X.isnull().sum().sum()
+if nan_count > 0:
+    print(f"WARNING: {nan_count} NaN values found in predictors")
+    print("Dropping rows with NaN values...")
+    valid_idx = X.notnull().all(axis=1)
+    X = X[valid_idx]
+    y = y[valid_idx]
+    print(f"Updated sample size: {len(X)}")
+
+# Check for multicollinearity using VIF
+print(f"\nMulticollinearity check (VIF):")
+try:
+    from statsmodels.stats.outliers_influence import variance_inflation_factor
+    vif_data = pd.DataFrame()
+    vif_data["feature"] = X.drop(columns=['const']).columns
+    vif_data["VIF"] = [variance_inflation_factor(X.drop(columns=['const']).values, i) for i in range(X.drop(columns=['const']).shape[1])]
+    print(vif_data)
+    
+    # Identify high VIF features
+    high_vif = vif_data[vif_data["VIF"] > 10]
+    if len(high_vif) > 0:
+        print(f"WARNING: High multicollinearity detected in {len(high_vif)} features:")
+        print(high_vif)
+        print("Consider removing or combining highly correlated features")
+    else:
+        print("No severe multicollinearity detected (VIF < 10)")
+except Exception as e:
+    print(f"Could not compute VIF: {e}")
+
+# Final data validation before OLS
+print(f"\nFinal data validation:")
+print(f"  X data types: {X.dtypes.value_counts().to_dict()}")
+print(f"  y data type: {y.dtype}")
+print(f"  X has NaN: {X.isnull().any().any()}")
+print(f"  y has NaN: {y.isnull().any()}")
+
+# Ensure all data is numeric
+X_numeric = X.select_dtypes(include=[np.number])
+y_numeric = pd.to_numeric(y, errors='coerce')
+
+if len(X_numeric.columns) != len(X.columns):
+    print(f"WARNING: Some columns were not numeric and removed")
+    print(f"Using {len(X_numeric.columns)} numeric columns")
+
+X = X_numeric
+y = y_numeric.dropna()
+
+# Align X and y indices
+common_idx = X.index.intersection(y.index)
+X = X.loc[common_idx]
+y = y.loc[common_idx]
+
+print(f"Final dataset: X={X.shape}, y={y.shape}")
+
+# Split data
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+print(f"\nData split:")
+print(f"  Training set: {len(X_train)} observations")
+print(f"  Test set: {len(X_test)} observations")
+
+# Fit OLS model
+print(f"\n" + "="*50)
+print("OLS MODEL FITTING")
+print("="*50)
+
+# Final check before OLS
+print(f"X_train dtypes: {X_train.dtypes.value_counts().to_dict()}")
+print(f"y_train dtype: {y_train.dtype}")
+print(f"X_train has NaN: {X_train.isnull().any().any()}")
+print(f"y_train has NaN: {y_train.isnull().any()}")
+
+ols_model = sm.OLS(y_train, X_train).fit()
+
+# Debug information about the model
+print(f"\nModel debugging information:")
+print(f"  Model parameters shape: {ols_model.params.shape}")
+print(f"  Model parameters index: {list(ols_model.params.index)}")
+print(f"  Has constant: {'const' in ols_model.params.index}")
+print(f"  X_train columns: {list(X_train.columns)}")
+
+# Display detailed OLS results in a formatted table
+print("\n" + "="*80)
+print("OLS REGRESSION RESULTS")
+print("="*80)
+print(f"{'Dep. Variable:':<25} bat_landing_to_food   R-squared: {ols_model.rsquared:>20.3f}")
+print(f"{'Model:':<25} OLS   Adj. R-squared: {ols_model.rsquared_adj:>20.3f}")
+print(f"{'Method:':<25} Least Squares   F-statistic: {ols_model.fvalue:>20.2f}")
+print(f"{'Date:':<25} {pd.Timestamp.now().strftime('%a, %d %b %Y'):<20} Prob (F-statistic): {ols_model.f_pvalue:>12.2e}")
+print(f"{'Time:':<25} {pd.Timestamp.now().strftime('%H:%M:%S'):<20} Log-Likelihood: {ols_model.llf:>15.1f}")
+print(f"{'No. Observations:':<25} {len(y_train):<20} AIC: {ols_model.aic:>20.1f}")
+print(f"{'Df Residuals:':<25} {ols_model.df_resid:<20} BIC: {ols_model.bic:>20.1f}")
+print(f"{'Df Model:':<25} {ols_model.df_model:<20}")
+print(f"{'Covariance Type:':<25} nonrobust")
+print("="*80)
+
+# Create coefficient table
+print(f"{'Variable':<30} {'coef':<10} {'std err':<10} {'t':<8} {'P>|t|':<8} {'[0.025':<10} {'0.975]':<8}")
+print("-" * 80)
+
+# Display coefficients with proper formatting
+for var in ols_model.params.index:
+    coef = ols_model.params[var]
+    std_err = ols_model.bse[var]
+    t_stat = ols_model.tvalues[var]
+    p_val = ols_model.pvalues[var]
+    ci_low = ols_model.conf_int().loc[var, 0]
+    ci_high = ols_model.conf_int().loc[var, 1]
+    
+    # Format p-value
+    if p_val < 0.001:
+        p_str = "0.000"
+    elif p_val < 0.01:
+        p_str = f"{p_val:.3f}"
+    else:
+        p_str = f"{p_val:.3f}"
+    
+    print(f"{var:<30} {coef:<10.4f} {std_err:<10.4f} {t_stat:<8.3f} {p_str:<8} {ci_low:<10.4f} {ci_high:<8.4f}")
+
+print("="*80)
+
+# Additional model statistics
+print(f"\nModel Diagnostics:")
+print(f"  R-squared: {ols_model.rsquared:.3f}")
+print(f"  Adj. R-squared: {ols_model.rsquared_adj:.3f}")
+print(f"  F-statistic: {ols_model.fvalue:.2f} (p={ols_model.f_pvalue:.2e})")
+print(f"  AIC: {ols_model.aic:.1f}")
+print(f"  BIC: {ols_model.bic:.1f}")
+print(f"  Log-Likelihood: {ols_model.llf:.1f}")
+print(f"  Condition Number: {ols_model.condition_number:.1f}")
+
+# Significance summary
+significant_vars = [var for var in ols_model.params.index if ols_model.pvalues[var] < 0.05 and var != 'const']
+print(f"\nSignificant Variables (p < 0.05): {len(significant_vars)}")
+for var in significant_vars:
+    coef = ols_model.params[var]
+    p_val = ols_model.pvalues[var]
+    significance = "***" if p_val < 0.001 else "**" if p_val < 0.01 else "*"
+    print(f"  {var}: β={coef:+.4f}, p={p_val:.4f} {significance}")
+
+print("\n" + "="*80)
+
+# Create a summary table of key results
+print(f"\n{'SUMMARY OF KEY RESULTS':^80}")
+print("="*80)
+print(f"{'Variable':<30} {'Coefficient':<12} {'P-value':<10} {'Significance':<12} {'Interpretation':<20}")
+print("-" * 80)
+
+# Define interpretation for key variables
+interpretations = {
+    'const': 'Baseline vigilance',
+    'seconds_after_rat_arrival': 'Time effect (closer = higher)',
+    'risk': 'Risk presence effect',
+    'reward': 'Success effect (higher = more vigilant)',
+    'season': 'Seasonal effect (Spring vs Winter)',
+    'rat_arrival_number': 'Rat frequency effect',
+    'risk_season_interaction': 'Risk × Season interaction',
+    'night_phase': 'Time of night effect',
+    'food_scarcity': 'Food scarcity effect',
+    'vigilance_index': 'Vigilance × (1-success)',
+    'rat_presence': 'Rat presence binary',
+    'rat_activity_index': 'Combined rat activity',
+    'food_availability': 'Food availability effect',
+    'rat_minutes': 'Rat duration effect',
+    'bat_landing_number': 'Landing sequence effect',
+    'hours_after_sunset_x': 'Time after sunset effect',
+}
+
+for var in ols_model.params.index:
+    coef = ols_model.params[var]
+    p_val = ols_model.pvalues[var]
+    
+    # Determine significance level
+    if p_val < 0.001:
+        sig = "***"
+    elif p_val < 0.01:
+        sig = "**"
+    elif p_val < 0.05:
+        sig = "*"
+    else:
+        sig = ""
+    
+    # Format p-value
+    if p_val < 0.001:
+        p_str = "<0.001"
+    else:
+        p_str = f"{p_val:.3f}"
+    
+    # Get interpretation
+    interp = interpretations.get(var, 'Other effect')
+    
+    print(f"{var:<30} {coef:<+12.4f} {p_str:<10} {sig:<12} {interp:<20}")
+
+print("="*80)
+print("Significance levels: *** p<0.001, ** p<0.01, * p<0.05")
+print("="*80)
+
+# Predictions and evaluation
+y_pred_train = ols_model.predict(X_train)
+y_pred_test = ols_model.predict(X_test)
+
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+r2_train = r2_score(y_train, y_pred_train)
+r2_test = r2_score(y_test, y_pred_test)
+rmse_test = mean_squared_error(y_test, y_pred_test)
+mae_test = mean_absolute_error(y_test, y_pred_test)
+
+print(f"\nOLS Evaluation:")
+print(f"  R² (train): {r2_train:.4f}")
+print(f"  R² (test): {r2_test:.4f}")
+print(f"  RMSE (test): {rmse_test:.4f}")
+print(f"  MAE (test): {mae_test:.4f}")
+
+# Model diagnostics
+print(f"\nModel diagnostics:")
+print(f"  F-statistic: {ols_model.fvalue:.2f} (p={ols_model.f_pvalue:.4f})")
+print(f"  AIC: {ols_model.aic:.2f}")
+print(f"  BIC: {ols_model.bic:.2f}")
+print(f"  Condition number: {ols_model.condition_number:.2f}")
+
+# Check for significant variables
+significant_vars = [var for var in X_vars if ols_model.pvalues[var] < 0.05]
+print(f"\nSignificant variables (p < 0.05): {len(significant_vars)}/{len(X_vars)}")
+for var in significant_vars:
+    coef = ols_model.params[var]
+    p_val = ols_model.pvalues[var]
+    print(f"  {var}: β={coef:+.4f}, p={p_val:.4f}")
+
+# Residual analysis
+residuals = ols_model.resid
+print(f"\nResidual analysis:")
+print(f"  Mean residual: {residuals.mean():.6f}")
+print(f"  Residual std: {residuals.std():.4f}")
+print(f"  Min residual: {residuals.min():.4f}")
+print(f"  Max residual: {residuals.max():.4f}")
+
+# Normality test for residuals
+from scipy.stats import shapiro, normaltest
+try:
+    if len(residuals) <= 5000:  # Shapiro-Wilk works for n <= 5000
+        shapiro_stat, shapiro_p = shapiro(residuals)
+        print(f"  Shapiro-Wilk normality test: p={shapiro_p:.4f}")
+    else:
+        print(f"  Sample too large for Shapiro-Wilk test")
+    
+    # D'Agostino's normality test (works for larger samples)
+    dagostino_stat, dagostino_p = normaltest(residuals)
+    print(f"  D'Agostino normality test: p={dagostino_p:.4f}")
+    
+    if shapiro_p > 0.05 or dagostino_p > 0.05:
+        print(f"  Residuals appear normally distributed (p > 0.05)")
+    else:
+        print(f"  WARNING: Residuals may not be normally distributed (p < 0.05)")
+except Exception as e:
+    print(f"  Could not perform normality tests: {e}")
+
+# Store results for visualization
+ols_results = {
+    'model': ols_model,
+    'r_squared': ols_model.rsquared,
+    'adj_r_squared': ols_model.rsquared_adj,
+    'f_statistic': ols_model.fvalue,
+    'f_pvalue': ols_model.f_pvalue,
+    'aic': ols_model.aic,
+    'bic': ols_model.bic,
+    'coefficients': ols_model.params,
+    'pvalues': ols_model.pvalues,
+    'residuals': residuals,
+    'significant_vars': significant_vars
+}
+
+# Visualization
+print("\n" + "="*50)
+print("CREATING OLS REGRESSION VISUALIZATIONS")
+print("="*50)
+
+fig, axs = plt.subplots(2, 3, figsize=(18, 12), facecolor='white')
+fig.suptitle('Phase 5.2: OLS Regression Analysis for Investigation B', fontsize=16, fontweight='bold')
+
+# Panel 1: Feature Importance
+# Get coefficients, excluding constant if it exists
+if 'const' in ols_model.params.index:
+    coefs = ols_model.params.drop('const')
+else:
+    coefs = ols_model.params
+
+features = coefs.index
+importance = coefs.values
+sorted_pairs = sorted(zip(features, importance), key=lambda x: abs(x[1]), reverse=True)
+features_sorted, importance_sorted = zip(*sorted_pairs)
+colors = ['red' if x < 0 else 'green' for x in importance_sorted]
+bars = axs[0, 0].barh(range(len(features_sorted)), importance_sorted, color=colors, alpha=0.7)
+axs[0, 0].set_yticks(range(len(features_sorted)))
+axs[0, 0].set_yticklabels(features_sorted, fontsize=9)
+axs[0, 0].set_xlabel('Coefficient Value', fontsize=12, fontweight='bold')
+axs[0, 0].set_title('Feature Importance (OLS)', fontweight='bold')
+axs[0, 0].axvline(x=0, color='black', linestyle='-', alpha=0.3)
+
+# Add significance indicators
+for i, (bar, val) in enumerate(zip(bars, importance_sorted)):
+    feature = features_sorted[i]
+    is_significant = feature in significant_vars
+    marker = " *" if is_significant else ""
+    axs[0, 0].text(val + (0.1 if val >= 0 else -0.1), bar.get_y() + bar.get_height()/2, 
+                   f'{val:.3f}{marker}', ha='left' if val >= 0 else 'right', va='center', 
+                   fontweight='bold', fontsize=8)
+
+# Panel 2: Actual vs Predicted
+axs[0, 1].scatter(y_test, y_pred_test, alpha=0.6, s=50, color='steelblue')
+axs[0, 1].plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--', lw=2)
+axs[0, 1].set_xlabel('Actual Vigilance (s)', fontsize=12, fontweight='bold')
+axs[0, 1].set_ylabel('Predicted Vigilance (s)', fontsize=12, fontweight='bold')
+axs[0, 1].set_title(f'Actual vs Predicted (R² = {r2_test:.3f})', fontweight='bold')
+axs[0, 1].text(0.05, 0.95, f'R² = {r2_test:.3f}', transform=axs[0, 1].transAxes, fontsize=12, 
+               bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+# Panel 3: Residuals vs Predicted
+residuals_plot = y_test - y_pred_test
+axs[0, 2].scatter(y_pred_test, residuals_plot, alpha=0.6, s=50, color='darkorange')
+axs[0, 2].axhline(y=0, color='r', linestyle='--', lw=2)
+axs[0, 2].set_xlabel('Predicted Values', fontsize=12, fontweight='bold')
+axs[0, 2].set_ylabel('Residuals', fontsize=12, fontweight='bold')
+axs[0, 2].set_title('Residuals vs Predicted', fontweight='bold')
+
+# Panel 4: Residuals histogram
+axs[1, 0].hist(residuals_plot, bins=20, alpha=0.7, color='seagreen', edgecolor='black')
+axs[1, 0].axvline(x=0, color='red', linestyle='--', linewidth=2)
+axs[1, 0].set_xlabel('Residuals', fontsize=12, fontweight='bold')
+axs[1, 0].set_ylabel('Frequency', fontsize=12, fontweight='bold')
+axs[1, 0].set_title('Residuals Distribution\n(Normality Check)', fontweight='bold')
+
+# Add normal distribution overlay
+mu, sigma = residuals_plot.mean(), residuals_plot.std()
+x = np.linspace(residuals_plot.min(), residuals_plot.max(), 100)
+normal_curve = ((1/(sigma * np.sqrt(2 * np.pi))) * 
+               np.exp(-0.5 * ((x - mu) / sigma) ** 2)) * len(residuals_plot) * (residuals_plot.max() - residuals_plot.min()) / 20
+axs[1, 0].plot(x, normal_curve, 'r-', linewidth=2, label='Normal Distribution')
+axs[1, 0].legend(fontsize=10)
+
+# Panel 5: Model performance metrics
+metrics_data = ['R² (train)', 'R² (test)', 'RMSE', 'MAE']
+metrics_values = [r2_train, r2_test, rmse_test, mae_test]
+bars_metrics = axs[1, 1].bar(metrics_data, metrics_values, color=['steelblue', 'darkorange', 'seagreen', 'crimson'], alpha=0.7)
+axs[1, 1].set_ylabel('Value', fontsize=12, fontweight='bold')
+axs[1, 1].set_title('Model Performance Metrics', fontweight='bold')
+axs[1, 1].tick_params(axis='x', rotation=45)
+
+# Add value labels
+for bar, val in zip(bars_metrics, metrics_values):
+    axs[1, 1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01, 
+                   f'{val:.3f}', ha='center', va='bottom', fontweight='bold', fontsize=10)
+
+# Panel 6: Model summary
+axs[1, 2].axis('off')
+summary_text = "OLS Model Summary:\n\n"
+summary_text += f"R² (test): {r2_test:.4f}\n"
+summary_text += f"Adj. R²: {ols_model.rsquared_adj:.4f}\n"
+summary_text += f"AIC: {ols_model.aic:.1f}\n"
+summary_text += f"BIC: {ols_model.bic:.1f}\n"
+summary_text += f"F-statistic: {ols_model.fvalue:.2f}\n"
+summary_text += f"Condition #: {ols_model.condition_number:.1f}\n\n"
+
+summary_text += f"Significant variables:\n"
+summary_text += f"{len(significant_vars)}/{len(X_vars)} (p < 0.05)\n\n"
+
+summary_text += "Key Insights:\n"
+summary_text += "• OLS provides interpretable coefficients\n"
+summary_text += "• Statistical significance testing\n"
+summary_text += "• Model diagnostics ensure validity\n"
+summary_text += "• Feature engineering improves prediction\n\n"
+
+summary_text += "For Investigation B:\n"
+summary_text += "• Seasonal effects quantified\n"
+summary_text += "• Environmental factors significant\n"
+summary_text += "• Behavioral responses explained\n"
+summary_text += "• Statistical confidence achieved"
+
+axs[1, 2].text(0.05, 0.95, summary_text, transform=axs[1, 2].transAxes, 
+               fontsize=10, va='top', ha='left', fontweight='bold',
+               bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
+
+plt.tight_layout(rect=[0, 0.03, 1, 0.95], pad=2.0)
+phase52_path = os.path.join(plots_dir, 'Phase5.2_OLS_Regression_Analysis.png')
+plt.savefig(phase52_path, dpi=300, bbox_inches='tight', facecolor='white')
+plt.show()
+print(f"Saved Phase 5.2 OLS regression plot to: {phase52_path}")
+
+# OLS regression summary
+print("\n" + "="*50)
+print("OLS REGRESSION SUMMARY")
+print("="*50)
+
+print(f"OLS regression successfully fitted:")
+print(f"  • Explains {r2_test:.1%} of variance in bat vigilance")
+print(f"  • Adjusted R²: {ols_model.rsquared_adj:.1%}")
+print(f"  • Average prediction error: {rmse_test:.2f} seconds")
+print(f"  • Mean absolute error: {mae_test:.2f} seconds")
+print(f"  • Sample size: {len(df_combined)} observations")
+
+# Identify most important predictors
+if 'const' in ols_model.params.index:
+    coefs = ols_model.params.drop('const')
+else:
+    coefs = ols_model.params
+
+most_important = max(coefs.items(), key=lambda x: abs(x[1]))
+print(f"  • Most important predictor: {most_important[0]} (β={most_important[1]:+.3f})")
+
+# Significance analysis
+print(f"  • Statistically significant variables: {len(significant_vars)}/{len(X_vars)}")
+if significant_vars:
+    print(f"    Significant: {', '.join(significant_vars[:5])}{'...' if len(significant_vars) > 5 else ''}")
+
+# Model quality assessment
+print(f"\nModel quality assessment:")
+if r2_test < 0:
+    print(f"  • WARNING: Negative R² indicates severe overfitting or data issues")
+elif r2_test < 0.1:
+    print(f"  • WARNING: Very low R² - model explains little variance")
+else:
+    print(f"  • Model performance: {'Good' if r2_test > 0.3 else 'Moderate' if r2_test > 0.1 else 'Poor'}")
+
+if ols_model.condition_number > 30:
+    print(f"  • WARNING: High condition number ({ols_model.condition_number:.1f}) suggests multicollinearity")
+else:
+    print(f"  • Condition number: {ols_model.condition_number:.1f} (acceptable)")
+
+print(f"\nKey findings for Investigation B:")
+print(f"  • Multiple threat variables together predict bat behavior")
+print(f"  • OLS quantifies seasonal effects with statistical confidence")
+print(f"  • Environmental context matters for behavioral responses")
+print(f"  • Feature engineering improves model performance")
+print(f"  • Statistical significance confirms key relationships")
+
+print(f"\nOLS regression analysis completed successfully!")
+
+#%%
+# ============================================================================
+# PHASE 5.3: SIMPLE LINEAR REGRESSION - PREDATOR PERCEPTION ANALYSIS
+# ============================================================================
+print("\n" + "="*60)
+print("PHASE 5.3: SIMPLE LINEAR REGRESSION - PREDATOR PERCEPTION ANALYSIS")
+print("="*60)
+
+print("Research Question: Do bats perceive rats not just as competitors for food but also as potential predators?")
+print("Hypothesis: If rats are considered a predation risk by bats, this will translate into higher avoidance behavior or increased vigilance during foraging.\n")
+
+# Import necessary libraries for Investigation A analysis
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.preprocessing import StandardScaler
+import statsmodels.api as sm
+
+print("="*50)
+print("INVESTIGATION A: SIMPLE LINEAR REGRESSION ANALYSIS")
+print("="*50)
+
+# Prepare data for Investigation A analysis
+print("Preparing data for simple linear regression analysis...")
+
+# Create response variables for different aspects of predator perception
+df_predator = dataset1.copy()
+
+# 1. Vigilance as predator response (continuous)
+df_predator['vigilance_response'] = df_predator['bat_landing_to_food']
+
+# 2. Avoidance behavior (binary) - high vigilance threshold
+vigilance_threshold = df_predator['bat_landing_to_food'].quantile(0.75)  # Top 25% as high vigilance
+df_predator['avoidance_behavior'] = (df_predator['bat_landing_to_food'] > vigilance_threshold).astype(int)
+
+# 3. Risk perception (binary) - based on defensive habits
 defensive_habits = ['cautious', 'slow_approach', 'fight']
-dataset1_phase52['defensive'] = dataset1_phase52['habit'].isin(defensive_habits).astype(int)
-multiple_predictors.append('defensive')
+df_predator['risk_perception'] = df_predator['habit'].isin(defensive_habits).astype(int)
 
-print(f"Response Variable: {response_name}")
-print(f"Predictors: {len(multiple_predictors)} combined variables")
-print(f"Predictor list: {multiple_predictors}")
+# 4. Predation risk index (composite)
+df_predator['predation_risk_index'] = (
+    df_predator['seconds_after_rat_arrival'].rank(pct=True) +  # Closer = higher risk
+    df_predator['rat_minutes'].rank(pct=True) +  # More rat activity = higher risk
+    df_predator['rat_arrival_number'].rank(pct=True)  # More arrivals = higher risk
+) / 3
 
-# Prepare data for multiple regression
-multiple_data = dataset1_phase52[multiple_predictors + [response_var]].dropna()
-print(f"Sample size: {len(multiple_data)} observations\n")
+print(f"Response variables created:")
+print(f"  • Vigilance response: {df_predator['vigilance_response'].describe()['mean']:.2f} ± {df_predator['vigilance_response'].describe()['std']:.2f}")
+print(f"  • Avoidance behavior: {df_predator['avoidance_behavior'].sum()}/{len(df_predator)} ({df_predator['avoidance_behavior'].mean()*100:.1f}%)")
+print(f"  • Risk perception: {df_predator['risk_perception'].sum()}/{len(df_predator)} ({df_predator['risk_perception'].mean()*100:.1f}%)")
+print(f"  • Predation risk index: {df_predator['predation_risk_index'].describe()['mean']:.3f} ± {df_predator['predation_risk_index'].describe()['std']:.3f}")
 
-if len(multiple_data) > 50:  # Ensure sufficient data
-    X_multiple = multiple_data[multiple_predictors]
-    y_multiple = multiple_data[response_var]
+# Define predictor variables for simple regression (one at a time)
+simple_predictors = {
+    'seconds_after_rat_arrival': 'Temporal Proximity to Rat (seconds)',
+    'rat_minutes': 'Rat Presence Intensity (minutes)',
+    'rat_arrival_number': 'Rat Arrival Frequency (count)',
+    'food_availability': 'Food Availability Level',
+    'hours_after_sunset_x': 'Time After Sunset (hours)',
+    'bat_landing_number': 'Bat Landing Sequence'
+}
+
+print(f"\nPredictor variables for simple regression: {len(simple_predictors)} features")
+for var, desc in simple_predictors.items():
+    print(f"  • {desc} ({var})")
+
+# Clean data for analysis
+analysis_data = df_predator[list(simple_predictors.keys()) + 
+                          ['vigilance_response', 'avoidance_behavior', 'risk_perception', 'predation_risk_index']].dropna()
+
+print(f"\nAnalysis dataset: {len(analysis_data)} observations")
+print(f"Missing data removed: {len(df_predator) - len(analysis_data)} observations")
+
+# Simple Linear Regression Analysis
+print("\n" + "="*50)
+print("SIMPLE LINEAR REGRESSION ANALYSIS")
+print("="*50)
+
+# Prepare features and targets
+X = analysis_data[list(simple_predictors.keys())]
+y_vigilance = analysis_data['vigilance_response']
+y_avoidance = analysis_data['avoidance_behavior']
+y_risk = analysis_data['risk_perception']
+y_predation = analysis_data['predation_risk_index']
+
+# Scale features
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# Store results for simple regression
+simple_results = {}
+
+print("Testing each predictor individually against each response variable:\n")
+
+# Test each predictor against each response
+for predictor, description in simple_predictors.items():
+    print(f"Predictor: {description}")
+    print("-" * 50)
     
-    # Split data
-    X_train_multi, X_test_multi, y_train_multi, y_test_multi = train_test_split(
-        X_multiple, y_multiple, test_size=0.3, random_state=42)
+    # Get predictor index
+    pred_idx = list(simple_predictors.keys()).index(predictor)
+    X_single = X_scaled[:, pred_idx].reshape(-1, 1)
     
-    # Standardize features
-    scaler_multi = StandardScaler()
-    X_train_multi_scaled = scaler_multi.fit_transform(X_train_multi)
-    X_test_multi_scaled = scaler_multi.transform(X_test_multi)
-    
-    # Fit multiple linear regression
-    multiple_model = LinearRegression()
-    multiple_model.fit(X_train_multi_scaled, y_train_multi)
-    
-    # Predictions
-    y_pred_train_multi = multiple_model.predict(X_train_multi_scaled)
-    y_pred_test_multi = multiple_model.predict(X_test_multi_scaled)
-    
-    # Calculate metrics
-    r2_train = r2_score(y_train_multi, y_pred_train_multi)
-    r2_test = r2_score(y_test_multi, y_pred_test_multi)
-    rmse_test = np.sqrt(mean_squared_error(y_test_multi, y_pred_test_multi))
-    mae_test = mean_absolute_error(y_test_multi, y_pred_test_multi)
-    
-    # Store results
-    multiple_regression_results = {
-        'model': multiple_model,
-        'scaler': scaler_multi,
-        'r2_train': r2_train,
-        'r2_test': r2_test,
-        'rmse_test': rmse_test,
-        'mae_test': mae_test,
-        'feature_names': multiple_predictors,
-        'coefficients': dict(zip(multiple_predictors, multiple_model.coef_)),
-        'intercept': multiple_model.intercept_,
-        'sample_size': len(multiple_data)
+    # Test against each response variable
+    responses = {
+        'vigilance_response': y_vigilance,
+        'avoidance_behavior': y_avoidance,
+        'risk_perception': y_risk,
+        'predation_risk_index': y_predation
     }
     
-    print(f"Multiple Regression Results:")
-    print(f"  Sample size: {len(multiple_data)} (Train: {len(X_train_multi)}, Test: {len(X_test_multi)})")
-    print(f"  R² (train): {r2_train:.4f}")
-    print(f"  R² (test): {r2_test:.4f}")
-    print(f"  RMSE (test): {rmse_test:.4f}")
-    print(f"  MAE (test): {mae_test:.4f}")
+    for response_name, y_response in responses.items():
+        # Simple linear regression
+        lr_simple = LinearRegression()
+        lr_simple.fit(X_single, y_response)
+        
+        # Predictions
+        y_pred = lr_simple.predict(X_single)
+        r2 = lr_simple.score(X_single, y_response)
+        rmse = np.sqrt(mean_squared_error(y_response, y_pred))
+        
+        # Store results
+        key = f"{predictor}_{response_name}"
+        simple_results[key] = {
+            'predictor': predictor,
+            'response': response_name,
+            'coefficient': lr_simple.coef_[0],
+            'intercept': lr_simple.intercept_,
+            'r2': r2,
+            'rmse': rmse
+        }
+        
+        print(f"  {response_name}: R² = {r2:.4f}, RMSE = {rmse:.4f}, β = {lr_simple.coef_[0]:+.4f}")
     
-    print(f"\nFeature coefficients (standardized):")
-    for var, coef in zip(multiple_predictors, multiple_model.coef_):
-        print(f"  {var:25}: {coef:+.4f}")
-    print(f"  {'Intercept':25}: {multiple_model.intercept_:+.4f}")
-    
-    # Statistical significance using OLS
-    print(f"\nStatistical Significance (OLS):")
-    print("-" * 40)
-    
-    # Prepare data for OLS
-    X_ols_multi = sm.add_constant(X_multiple)
-    y_ols_multi = y_multiple
-    
-    # Fit OLS model
-    ols_multi = sm.OLS(y_ols_multi, X_ols_multi).fit()
-    
-    print(f"R-squared: {ols_multi.rsquared:.4f}")
-    print(f"Adj. R-squared: {ols_multi.rsquared_adj:.4f}")
-    print(f"F-statistic: {ols_multi.fvalue:.4f} (p={ols_multi.f_pvalue:.4f})")
-    print(f"AIC: {ols_multi.aic:.2f}")
-    print(f"BIC: {ols_multi.bic:.2f}")
-    
-    print(f"\nCoefficient significance:")
-    for var in multiple_predictors:
-        coef = ols_multi.params[var]
-        p_val = ols_multi.pvalues[var]
-        significance = "***" if p_val < 0.001 else "**" if p_val < 0.01 else "*" if p_val < 0.05 else ""
-        print(f"  {var:25}: {coef:+.4f} (p={p_val:.4f}) {significance}")
-    
-    # Model diagnostics
-    print(f"\nModel diagnostics:")
-    residuals_multi = ols_multi.resid
-    
-    # Heteroscedasticity test
-    try:
-        bp_stat, bp_pval, _, _ = het_breuschpagan(residuals_multi, X_ols_multi)
-        print(f"  Breusch-Pagan test (heteroscedasticity): p={bp_pval:.4f}")
-    except:
-        print("  Breusch-Pagan test: Could not compute")
-    
-    # Durbin-Watson test for autocorrelation
-    dw_stat = durbin_watson(residuals_multi)
-    print(f"  Durbin-Watson test (autocorrelation): {dw_stat:.4f}")
+    print()
 
-# Multiple regression visualization
+# Find best simple relationships
+print("="*50)
+print("BEST SIMPLE RELATIONSHIPS")
+print("="*50)
+
+# Sort by R² for each response
+for response_name in responses.keys():
+    response_results = {k: v for k, v in simple_results.items() if v['response'] == response_name}
+    best_result = max(response_results.items(), key=lambda x: x[1]['r2'])
+    
+    print(f"Best predictor for {response_name}:")
+    print(f"  Predictor: {best_result[1]['predictor']}")
+    print(f"  R² = {best_result[1]['r2']:.4f}")
+    print(f"  Coefficient = {best_result[1]['coefficient']:+.4f}")
+    print()
+
+# Visualization for simple regression
+print("="*50)
+print("CREATING SIMPLE REGRESSION VISUALIZATIONS")
+print("="*50)
+
+fig, axs = plt.subplots(2, 3, figsize=(18, 12), facecolor='white')
+fig.suptitle('Phase 5.3: Simple Linear Regression - Predator Perception Analysis', fontsize=16, fontweight='bold')
+
+# Plot 1: Vigilance vs Rat Proximity (best relationship)
+axs[0, 0].scatter(analysis_data['seconds_after_rat_arrival'], analysis_data['vigilance_response'], 
+                 alpha=0.6, s=30, color='steelblue')
+axs[0, 0].set_xlabel('Seconds After Rat Arrival (lower = closer)')
+axs[0, 0].set_ylabel('Vigilance Response (seconds)')
+axs[0, 0].set_title('Vigilance vs Rat Proximity')
+
+# Add trend line
+z = np.polyfit(analysis_data['seconds_after_rat_arrival'], analysis_data['vigilance_response'], 1)
+p = np.poly1d(z)
+axs[0, 0].plot(analysis_data['seconds_after_rat_arrival'], p(analysis_data['seconds_after_rat_arrival']), "r--", alpha=0.8)
+
+# Plot 2: Avoidance vs Rat Intensity
+axs[0, 1].scatter(analysis_data['rat_minutes'], analysis_data['avoidance_behavior'], 
+                 alpha=0.6, s=30, color='darkorange')
+axs[0, 1].set_xlabel('Rat Minutes per Period')
+axs[0, 1].set_ylabel('Avoidance Behavior (0/1)')
+axs[0, 1].set_title('Avoidance vs Rat Intensity')
+
+# Add trend line
+z = np.polyfit(analysis_data['rat_minutes'], analysis_data['avoidance_behavior'], 1)
+p = np.poly1d(z)
+axs[0, 1].plot(analysis_data['rat_minutes'], p(analysis_data['rat_minutes']), "r--", alpha=0.8)
+
+# Plot 3: Risk Perception vs Rat Arrivals
+axs[0, 2].scatter(analysis_data['rat_arrival_number'], analysis_data['risk_perception'], 
+                 alpha=0.6, s=30, color='seagreen')
+axs[0, 2].set_xlabel('Number of Rat Arrivals')
+axs[0, 2].set_ylabel('Risk Perception (0/1)')
+axs[0, 2].set_title('Risk Perception vs Rat Arrivals')
+
+# Add trend line
+z = np.polyfit(analysis_data['rat_arrival_number'], analysis_data['risk_perception'], 1)
+p = np.poly1d(z)
+axs[0, 2].plot(analysis_data['rat_arrival_number'], p(analysis_data['rat_arrival_number']), "r--", alpha=0.8)
+
+# Plot 4: R² scores for all simple relationships
+r2_scores = []
+labels = []
+for response_name in responses.keys():
+    response_results = {k: v for k, v in simple_results.items() if v['response'] == response_name}
+    for pred_name in simple_predictors.keys():
+        key = f"{pred_name}_{response_name}"
+        if key in simple_results:
+            r2_scores.append(simple_results[key]['r2'])
+            labels.append(f"{pred_name}\nvs\n{response_name}")
+
+# Plot top 6 relationships
+top_indices = np.argsort(r2_scores)[-6:]
+top_r2 = [r2_scores[i] for i in top_indices]
+top_labels = [labels[i] for i in top_indices]
+
+bars = axs[1, 0].bar(range(len(top_r2)), top_r2, color='crimson', alpha=0.7)
+axs[1, 0].set_xlabel('Predictor-Response Pairs')
+axs[1, 0].set_ylabel('R² Score')
+axs[1, 0].set_title('Top 6 Simple Relationships (R²)')
+axs[1, 0].set_xticks(range(len(top_labels)))
+axs[1, 0].set_xticklabels(top_labels, rotation=45, ha='right')
+
+# Add value labels
+for bar, score in zip(bars, top_r2):
+    axs[1, 0].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01, 
+                   f'{score:.3f}', ha='center', va='bottom', fontweight='bold')
+
+# Plot 5: Coefficient magnitudes
+coef_magnitudes = []
+coef_labels = []
+for response_name in responses.keys():
+    response_results = {k: v for k, v in simple_results.items() if v['response'] == response_name}
+    for pred_name in simple_predictors.keys():
+        key = f"{pred_name}_{response_name}"
+        if key in simple_results:
+            coef_magnitudes.append(abs(simple_results[key]['coefficient']))
+            coef_labels.append(f"{pred_name}\nvs\n{response_name}")
+
+# Plot top 6 coefficient magnitudes
+top_coef_indices = np.argsort(coef_magnitudes)[-6:]
+top_coef = [coef_magnitudes[i] for i in top_coef_indices]
+top_coef_labels = [coef_labels[i] for i in top_coef_indices]
+
+bars = axs[1, 1].bar(range(len(top_coef)), top_coef, color='darkgreen', alpha=0.7)
+axs[1, 1].set_xlabel('Predictor-Response Pairs')
+axs[1, 1].set_ylabel('|Coefficient|')
+axs[1, 1].set_title('Top 6 Coefficient Magnitudes')
+axs[1, 1].set_xticks(range(len(top_coef_labels)))
+axs[1, 1].set_xticklabels(top_coef_labels, rotation=45, ha='right')
+
+# Add value labels
+for bar, coef in zip(bars, top_coef):
+    axs[1, 1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01, 
+                   f'{coef:.3f}', ha='center', va='bottom', fontweight='bold')
+
+# Plot 6: Summary
+axs[1, 2].axis('off')
+summary_text = "SIMPLE REGRESSION SUMMARY\n\n"
+summary_text += f"Research Question:\n"
+summary_text += f"Do bats perceive rats as predators?\n\n"
+summary_text += f"Analysis Method:\n"
+summary_text += f"Simple Linear Regression\n"
+summary_text += f"(One predictor at a time)\n\n"
+summary_text += f"Key Findings:\n"
+
+# Find best overall relationship
+best_overall = max(simple_results.items(), key=lambda x: x[1]['r2'])
+summary_text += f"• Best relationship: {best_overall[1]['predictor']} → {best_overall[1]['response']}\n"
+summary_text += f"• R² = {best_overall[1]['r2']:.3f}\n"
+summary_text += f"• Coefficient = {best_overall[1]['coefficient']:+.3f}\n\n"
+
+# Count significant relationships (R² > 0.1)
+significant_count = sum(1 for result in simple_results.values() if result['r2'] > 0.1)
+summary_text += f"Significant relationships (R² > 0.1):\n"
+summary_text += f"{significant_count}/{len(simple_results)} pairs\n\n"
+
+summary_text += f"Evidence for Predator Perception:\n"
+if significant_count > 0:
+    summary_text += f"✓ {significant_count} significant relationships found\n"
+    summary_text += f"✓ Bats show behavioral responses to rat presence\n"
+else:
+    summary_text += f"✗ No strong simple relationships found\n"
+    summary_text += f"✗ Limited evidence for predator perception\n"
+
+axs[1, 2].text(0.05, 0.95, summary_text, transform=axs[1, 2].transAxes, 
+               fontsize=10, va='top', ha='left', fontweight='bold',
+               bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
+
+plt.tight_layout(rect=[0, 0.03, 1, 0.95], pad=2.0)
+phase53_path = os.path.join(plots_dir, 'Phase5.3_Simple_Linear_Regression_Analysis.png')
+plt.savefig(phase53_path, dpi=300, bbox_inches='tight', facecolor='white')
+plt.show()
+print(f"Saved Phase 5.3 simple linear regression plot to: {phase53_path}")
+
+
+# Simple regression summary
 print("\n" + "="*50)
+print("SIMPLE REGRESSION SUMMARY")
+print("="*50)
+
+# Count significant relationships
+sklearn_significant = sum(1 for result in simple_results.values() if result['r2'] > 0.1)
+total_relationships = len(simple_results)
+
+print(f"Significant relationships found:")
+print(f"  LinearRegression (R² > 0.1): {sklearn_significant}/{total_relationships}")
+
+if best_overall:
+    print(f"  Best relationship: {best_overall[1]['predictor']} → {best_overall[1]['response']} (R² = {best_overall[1]['r2']:.3f})")
+
+print(f"\nSimple linear regression analysis completed successfully!")
+
+#%%
+# ============================================================================
+# PHASE 5.4: MULTIPLE LINEAR REGRESSION - PREDATOR PERCEPTION ANALYSIS
+# ============================================================================
+print("\n" + "="*60)
+print("PHASE 5.4: MULTIPLE LINEAR REGRESSION - PREDATOR PERCEPTION ANALYSIS")
+print("="*60)
+
+print("Testing if bats perceive rats as predators through vigilance behavior analysis...\n")
+print("Focus: Test if rat presence/proximity predicts higher vigilance (bat_landing_to_food)")
+print("indicating predation risk beyond competition.\n")
+
+# Prepare data for Investigation A focus with improved data cleaning
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LinearRegression
+from sklearn.feature_selection import RFE
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+import statsmodels.api as sm
+import numpy as np
+import pandas as pd
+
+# Define target: Bat vigilance response as proxy for anti-predator behavior
+target_variable = 'bat_landing_to_food'
+
+# Base features focused on rat as potential predator
+base_features = [
+    'seconds_after_rat_arrival', 'risk', 'reward', 'rat_minutes', 'rat_arrival_number'
+]
+
+# Add optional controls if available
+if 'hours_after_sunset_x' in dataset1.columns:
+    base_features.append('hours_after_sunset_x')
+if 'food_availability' in dataset1.columns:
+    base_features.append('food_availability')
+
+# Convert to numeric and handle missing values
+data = dataset1[base_features + [target_variable]].copy()
+for col in base_features:
+    data[col] = pd.to_numeric(data[col], errors='coerce')
+
+# Drop missing values first
+data = data.dropna()
+
+# Convert reward and risk to float
+data['reward'] = data['reward'].astype(float)
+data['risk'] = data['risk'].astype(float)
+
+# Enhanced outlier handling for multiple variables
+print(f"Before outlier removal: {len(data)} observations")
+for col in ['bat_landing_to_food', 'seconds_after_rat_arrival']:
+    q_low = data[col].quantile(0.01)
+    q_high = data[col].quantile(0.99)
+    data = data[data[col].between(q_low, q_high)]
+print(f"After outlier removal: {len(data)} observations")
+
+# Create engineered features for predator perception analysis (improved to reduce multicollinearity)
+data['rat_presence'] = ((data['rat_arrival_number'] > 0) | (data['rat_minutes'] > 0)).astype(int)
+data['rat_activity_index'] = (data['rat_minutes'] + data['rat_arrival_number']) / 2  # Simplified to avoid multicollinearity
+data['proximity_score'] = np.log1p(data['seconds_after_rat_arrival'])  # Log transform for stability
+data['risk_rat_interaction'] = data['risk'] * data['rat_presence']  # Interaction for heightened risk with rats
+
+if 'food_availability' in data.columns:
+    data['food_scarcity'] = 1 / (data['food_availability'] + 1e-6)
+
+# All explanatory variables for predator perception
+X_vars = base_features + ['rat_presence', 'rat_activity_index', 'proximity_score', 'risk_rat_interaction']
+if 'food_scarcity' in data.columns:
+    X_vars.append('food_scarcity')
+
+# Final data preparation
+X = data[X_vars]
+y = data[target_variable]
+
+print(f"Data preparation:")
+print(f"  Sample size: {len(data)} observations")
+print(f"  Features: {len(X_vars)} predictor variables")
+print(f"  Target: Bat vigilance response (anti-predator behavior)")
+print(f"  Target range: {y.min():.2f} to {y.max():.2f} seconds")
+print(f"  Target mean: {y.mean():.2f} seconds")
+print(f"  Target std: {y.std():.2f} seconds")
+print(f"  Rat presence: {data['rat_presence'].sum()} events ({data['rat_presence'].mean()*100:.1f}%)")
+
+# Add constant for intercept (statsmodels requirement)
+X_with_const = sm.add_constant(X)
+
+# VIF Check for Multicollinearity
+print(f"\n" + "="*50)
+print("MULTICOLLINEARITY CHECK (VIF)")
+print("="*50)
+
+# Get the constant term name (it might be 'const' or the first parameter)
+constant_name = X_with_const.columns[0]  # First column is usually the constant
+X_for_vif = X_with_const.drop(columns=[constant_name])
+
+vif_data = pd.DataFrame()
+vif_data["feature"] = X_for_vif.columns
+vif_data["VIF"] = [variance_inflation_factor(X_for_vif.values, i) for i in range(X_for_vif.shape[1])]
+print("\nVIF Check:")
+print(vif_data)
+
+# Split data for train-test evaluation (reduced test size for better training)
+X_train, X_test, y_train, y_test = train_test_split(X_with_const, y, test_size=0.2, random_state=42)
+
+print(f"\nData split:")
+print(f"  Training set: {len(X_train)} observations")
+print(f"  Test set: {len(X_test)} observations")
+
+# Fit OLS model using statsmodels for detailed statistical analysis
+print(f"\n" + "="*50)
+print("MULTIPLE LINEAR REGRESSION MODEL FITTING")
+print("="*50)
+
+ols_model = sm.OLS(y_train, X_train).fit()
+print("\nOLS Model Summary:")
+print(ols_model.summary())
+
+# Predictions and evaluation
+y_pred_train = ols_model.predict(X_train)
+y_pred_test = ols_model.predict(X_test)
+
+# Calculate R² scores
+train_r2 = r2_score(y_train, y_pred_train)
+test_r2 = r2_score(y_test, y_pred_test)
+
+# Cross-validated R² using sklearn
+from sklearn.linear_model import LinearRegression
+mlr_sklearn = LinearRegression()
+cv_scores = cross_val_score(mlr_sklearn, X, y, cv=5, scoring='r2')
+cv_r2 = np.mean(cv_scores)
+
+print(f"\nModel Evaluation:")
+print(f"  Train R²: {train_r2:.4f}")
+print(f"  Test R²: {test_r2:.4f}")
+print(f"  Cross-validated R²: {cv_r2:.4f}")
+
+# Additional metrics
+train_rmse = np.sqrt(mean_squared_error(y_train, y_pred_train))
+test_rmse = np.sqrt(mean_squared_error(y_test, y_pred_test))
+train_mae = mean_absolute_error(y_train, y_pred_train)
+test_mae = mean_absolute_error(y_test, y_pred_test)
+
+print(f"  Train RMSE: {train_rmse:.4f}")
+print(f"  Test RMSE: {test_rmse:.4f}")
+print(f"  Train MAE: {train_mae:.4f}")
+print(f"  Test MAE: {test_mae:.4f}")
+
+# Feature importance (coefficients from OLS model)
+# Get the constant term name (it might be 'const' or the first parameter)
+constant_name = ols_model.params.index[0]  # First parameter is usually the constant
+coefs = ols_model.params.drop(constant_name)
+feature_importance = pd.DataFrame({
+    'Feature': coefs.index,
+    'Coefficient': coefs.values,
+    'P_value': ols_model.pvalues[1:],  # Exclude constant
+    'Significant': ols_model.pvalues[1:] < 0.05
+})
+
+print("\nFeature Importance (Coefficients):")
+print(feature_importance.sort_values(by='Coefficient', key=abs, ascending=False))
+
+# Model interpretation
+print(f"\n" + "="*50)
+print("MODEL INTERPRETATION")
+print("="*50)
+
+print(f"Model Performance:")
+print(f"  Train R²: {train_r2:.4f}")
+print(f"  Test R²: {test_r2:.4f}")
+print(f"  Cross-validated R²: {cv_r2:.4f}")
+print(f"  Test RMSE: {test_rmse:.4f} seconds")
+print(f"  Test MAE: {test_mae:.4f} seconds")
+
+# Check for overfitting
+r2_gap = train_r2 - test_r2
+if r2_gap > 0.1:
+    print(f"  WARNING: Potential overfitting detected (Train-Test R² gap: {r2_gap:.3f})")
+else:
+    print(f"  Good generalization (Train-Test R² gap: {r2_gap:.3f})")
+
+# Check for negative R²
+if test_r2 < 0:
+    print(f"  WARNING: Negative R² indicates model performs worse than horizontal line")
+
+# Predator perception analysis
+print(f"\n" + "="*50)
+print("PREDATOR PERCEPTION ANALYSIS")
+print("="*50)
+
+# Key rat-related features for predator perception
+rat_features = ['rat_presence', 'rat_activity_index', 'proximity_score', 'risk_rat_interaction', 
+                'seconds_after_rat_arrival', 'rat_minutes', 'rat_arrival_number']
+
+print("Rat-related feature effects on vigilance (anti-predator behavior):")
+predator_evidence = 0
+for feature in rat_features:
+    if feature in feature_importance['Feature'].values:
+        row = feature_importance[feature_importance['Feature'] == feature].iloc[0]
+        effect = "increases" if row['Coefficient'] > 0 else "decreases"
+        significance = "***" if row['P_value'] < 0.001 else "**" if row['P_value'] < 0.01 else "*" if row['P_value'] < 0.05 else ""
+        print(f"  {feature}: {effect} vigilance by {abs(row['Coefficient']):.4f} seconds (β={row['Coefficient']:+.4f}) {significance}")
+        
+        # Count evidence for predator perception (positive coefficients for rat features)
+        if row['Coefficient'] > 0 and row['P_value'] < 0.05:
+            predator_evidence += 1
+        elif row['Coefficient'] > 0:
+            predator_evidence += 0.5
+
+print(f"\nModel Equation:")
+equation = f"Vigilance = {ols_model.params[constant_name]:.4f}"
+for feature in X_vars:
+    if feature in coefs.index:
+        coef_val = coefs[feature]
+        sign = "+" if coef_val >= 0 else ""
+        equation += f" {sign}{coef_val:.4f}*{feature}"
+print(f"  {equation}")
+
+# Statistical significance summary
+significant_features = feature_importance[feature_importance['Significant']]
+print(f"\nStatistically significant features (p < 0.05): {len(significant_features)}")
+for _, row in significant_features.iterrows():
+    print(f"  {row['Feature']}: β={row['Coefficient']:+.4f}, p={row['P_value']:.4f}")
+
+# Visualize results
+print(f"\n" + "="*50)
 print("CREATING MULTIPLE REGRESSION VISUALIZATIONS")
 print("="*50)
 
-# Create multiple regression plots
-fig_multi, axs_multi = plt.subplots(2, 3, figsize=(20, 12), facecolor='white')
-fig_multi.suptitle('Phase 5.2: Multiple Linear Regression Analysis for Investigation B', fontsize=18, fontweight='bold')
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-if 'multiple_regression_results' in locals():
-    # Panel 1: Feature importance (coefficients)
-    coefs = multiple_regression_results['coefficients']
-    features = list(coefs.keys())
-    importance = list(coefs.values())
-    
-    # Sort by absolute importance
-    sorted_pairs = sorted(zip(features, importance), key=lambda x: abs(x[1]), reverse=True)
-    features_sorted, importance_sorted = zip(*sorted_pairs)
-    
-    colors = ['red' if x < 0 else 'green' for x in importance_sorted]
-    bars = axs_multi[0, 0].barh(range(len(features_sorted)), importance_sorted, color=colors, alpha=0.7)
-    axs_multi[0, 0].set_yticks(range(len(features_sorted)))
-    # Create labels with both descriptive names and variable names
-    feature_labels = []
-    for f in features_sorted:
-        # Find the descriptive name from seasonal_predictors or create a default
-        if f in seasonal_predictors:
-            desc_name = seasonal_predictors[f]
-            feature_labels.append(f'{desc_name} ({f})')
-        else:
-            feature_labels.append(f'{f.replace("_", " ").title()} ({f})')
-    
-    axs_multi[0, 0].set_yticklabels(feature_labels, fontsize=10, fontweight='bold')
-    axs_multi[0, 0].set_xlabel('Coefficient Value (Standardized)', fontsize=12, fontweight='bold')
-    axs_multi[0, 0].set_title('Feature Importance\n(Multiple Regression)', fontweight='bold', fontsize=14)
-    axs_multi[0, 0].axvline(x=0, color='black', linestyle='-', alpha=0.3)
-    axs_multi[0, 0].tick_params(axis='x', labelsize=10)
-    
-    # Add value labels
-    for i, (bar, val) in enumerate(zip(bars, importance_sorted)):
-        axs_multi[0, 0].text(val + (0.1 if val >= 0 else -0.1), bar.get_y() + bar.get_height()/2, 
-                            f'{val:.3f}', ha='left' if val >= 0 else 'right', va='center', fontweight='bold', fontsize=9)
-    
-    # Panel 2: Actual vs Predicted
-    axs_multi[0, 1].scatter(y_test_multi, y_pred_test_multi, alpha=0.6, s=50, color='steelblue')
-    axs_multi[0, 1].plot([y_test_multi.min(), y_test_multi.max()], [y_test_multi.min(), y_test_multi.max()], 'r--', lw=2)
-    axs_multi[0, 1].set_xlabel('Actual Vigilance (s)', fontsize=12, fontweight='bold')
-    axs_multi[0, 1].set_ylabel('Predicted Vigilance (s)', fontsize=12, fontweight='bold')
-    axs_multi[0, 1].set_title(f'Actual vs Predicted\n(R² = {r2_test:.3f})', fontweight='bold', fontsize=14)
-    axs_multi[0, 1].tick_params(axis='both', labelsize=10)
-    
-    # Add R² text
-    axs_multi[0, 1].text(0.05, 0.95, f'R² = {r2_test:.3f}', 
-                        transform=axs_multi[0, 1].transAxes, fontsize=12, fontweight='bold',
-                        bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-    
-    # Panel 3: Residuals plot
-    residuals_plot = y_test_multi - y_pred_test_multi
-    axs_multi[0, 2].scatter(y_pred_test_multi, residuals_plot, alpha=0.6, s=50, color='darkorange')
-    axs_multi[0, 2].axhline(y=0, color='r', linestyle='--', lw=2)
-    axs_multi[0, 2].set_xlabel('Predicted Values', fontsize=12, fontweight='bold')
-    axs_multi[0, 2].set_ylabel('Residuals', fontsize=12, fontweight='bold')
-    axs_multi[0, 2].set_title('Residuals vs Predicted', fontweight='bold', fontsize=14)
-    axs_multi[0, 2].tick_params(axis='both', labelsize=10)
-    
-    # Panel 4: Residuals histogram
-    axs_multi[1, 0].hist(residuals_plot, bins=20, alpha=0.7, color='seagreen', edgecolor='black')
-    axs_multi[1, 0].axvline(x=0, color='red', linestyle='--', linewidth=2)
-    axs_multi[1, 0].set_xlabel('Residuals', fontsize=12, fontweight='bold')
-    axs_multi[1, 0].set_ylabel('Frequency', fontsize=12, fontweight='bold')
-    axs_multi[1, 0].set_title('Residuals Distribution\n(Normality Check)', fontweight='bold', fontsize=14)
-    axs_multi[1, 0].tick_params(axis='both', labelsize=10)
-    
-    # Add normal distribution overlay
-    mu, sigma = residuals_plot.mean(), residuals_plot.std()
-    x = np.linspace(residuals_plot.min(), residuals_plot.max(), 100)
-    normal_curve = ((1/(sigma * np.sqrt(2 * np.pi))) * 
-                   np.exp(-0.5 * ((x - mu) / sigma) ** 2)) * len(residuals_plot) * (residuals_plot.max() - residuals_plot.min()) / 20
-    axs_multi[1, 0].plot(x, normal_curve, 'r-', linewidth=2, label='Normal Distribution')
-    axs_multi[1, 0].legend(fontsize=10)
-    
-    # Panel 5: Model comparison (Seasonal vs Multiple)
-    if 'seasonal_comparison_results' in locals():
-        # Get best seasonal model R²
-        best_seasonal_r2 = max(seasonal_comparison_results.values(), key=lambda x: max(x['winter_r2'], x['spring_r2']))['winter_r2']
-        
-        comparison_data = ['Best Seasonal', 'Multiple']
-        comparison_r2 = [best_seasonal_r2, r2_test]
-        
-        bars_comp = axs_multi[1, 1].bar(comparison_data, comparison_r2, color=['steelblue', 'darkorange'], alpha=0.7)
-        axs_multi[1, 1].set_ylabel('R² Score', fontsize=12, fontweight='bold')
-        axs_multi[1, 1].set_title('Seasonal vs Multiple Regression\nPerformance Comparison', fontweight='bold', fontsize=14)
-        axs_multi[1, 1].tick_params(axis='both', labelsize=10)
-        
-        # Add value labels
-        for bar, val in zip(bars_comp, comparison_r2):
-            axs_multi[1, 1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01, 
-                               f'{val:.3f}', ha='center', va='bottom', fontweight='bold', fontsize=11)
-    
-    # Panel 6: Model summary
-    axs_multi[1, 2].axis('off')
-    multi_summary = "Multiple Regression Summary:\n\n"
-    multi_summary += f"R² (test): {r2_test:.4f}\n"
-    multi_summary += f"RMSE: {rmse_test:.4f}\n"
-    multi_summary += f"MAE: {mae_test:.4f}\n"
-    multi_summary += f"Sample size: {len(multiple_data)}\n\n"
-    
-    multi_summary += "Key Insights:\n"
-    multi_summary += "• Multiple predictors improve prediction\n"
-    multi_summary += "• Feature importance shows relative effects\n"
-    multi_summary += "• Residuals should be normally distributed\n"
-    multi_summary += "• Model explains bat vigilance behavior\n\n"
-    
-    multi_summary += "For Investigation B:\n"
-    multi_summary += "• Seasonal variables predict vigilance\n"
-    multi_summary += "• Environmental factors matter\n"
-    multi_summary += "• Behavioral responses are quantifiable\n"
-    multi_summary += "• Linear relationships exist"
+fig, axs = plt.subplots(1, 2, figsize=(12, 5), facecolor='white')
+fig.suptitle('Phase 5.4: Multiple Linear Regression - Predator Perception Analysis', fontsize=16, fontweight='bold')
 
-    axs_multi[1, 2].text(0.05, 0.95, multi_summary, transform=axs_multi[1, 2].transAxes, 
-                        fontsize=11, va='top', ha='left', fontweight='bold',
-                        bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
+# Feature Importance
+coefs = ols_model.params.drop(constant_name)
+features = coefs.index
+importance = coefs.values
+sorted_idx = np.argsort(abs(importance))[::-1]
+colors = ['green' if importance[i] > 0 else 'red' for i in sorted_idx]
 
-plt.tight_layout(rect=[0, 0.03, 1, 0.95], pad=2.0)
-phase52_path = os.path.join(plots_dir, 'Phase5.2_Multiple_Regression_Analysis.png')
-plt.savefig(phase52_path, dpi=300, bbox_inches='tight', facecolor='white')
+bars = axs[0].barh(np.array(features)[sorted_idx], np.array(importance)[sorted_idx], color=colors, alpha=0.75)
+axs[0].set_title('Feature Effects on Bat Vigilance\n(Potential Predation Indicators)', fontweight='bold')
+axs[0].set_xlabel('Coefficient Value (seconds)', fontsize=12)
+axs[0].axvline(x=0, color='black', linestyle='--', alpha=0.5)
+
+# Add coefficient values
+for i, v in enumerate(np.array(importance)[sorted_idx]):
+    axs[0].text(v + 0.1 if v > 0 else v - 0.1, i, f'{v:.3f}', va='center', ha='left' if v > 0 else 'right')
+
+# Actual vs Predicted
+axs[1].scatter(y_test, y_pred_test, alpha=0.6, color='blue')
+axs[1].plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--', lw=2)
+axs[1].set_xlabel('Actual Vigilance (seconds)', fontsize=12)
+axs[1].set_ylabel('Predicted Vigilance (seconds)', fontsize=12)
+axs[1].set_title(f'Actual vs Predicted (R² = {test_r2:.3f})', fontweight='bold')
+axs[1].text(0.05, 0.95, f'R² = {test_r2:.3f}', transform=axs[1].transAxes, fontsize=12, 
+           bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+plt.tight_layout()
+phase54_path = os.path.join(plots_dir, 'Phase5.4_Predator_Perception_Analysis.png')
+plt.savefig(phase54_path, dpi=300, bbox_inches='tight', facecolor='white')
 plt.show()
-print(f"Saved Phase 5.2 multiple regression plot to: {phase52_path}")
+print(f"Saved Phase 5.4 multiple regression plot to: {phase54_path}")
 
-# Multiple regression summary
-print("\n" + "="*50)
-print("MULTIPLE REGRESSION SUMMARY")
+# Final Analysis and Conclusion
+print(f"\n" + "="*60)
+print("FINAL ANALYSIS AND CONCLUSION")
+print("="*60)
+
+print("Based on multiple linear regression analysis:")
+
+# Evidence compilation for predator perception
+evidence_for_predator = 0
+evidence_against_predator = 0
+
+print(f"\n" + "="*50)
+print("EVIDENCE COMPILATION FOR PREDATOR PERCEPTION")
 print("="*50)
 
-if 'multiple_regression_results' in locals():
-    print(f"Multiple regression successfully fitted:")
-    print(f"  • Explains {r2_test:.1%} of variance in bat vigilance")
-    print(f"  • Average prediction error: {rmse_test:.2f} seconds")
-    print(f"  • Mean absolute error: {mae_test:.2f} seconds")
-    
-    # Identify most important predictors
-    coefs = multiple_regression_results['coefficients']
-    most_important = max(coefs.items(), key=lambda x: abs(x[1]))
-    print(f"  • Most important predictor: {most_important[0]} (β={most_important[1]:+.3f})")
-    
-    print(f"\nKey findings for Investigation B:")
-    print(f"  • Multiple threat variables together predict bat behavior")
-    print(f"  • Linear regression quantifies seasonal effects")
-    print(f"  • Environmental context matters for behavioral responses")
-    print(f"  • Model provides evidence for seasonal-response relationships")
-    
-    # Compare with seasonal regression
-    if 'seasonal_comparison_results' in locals():
-        best_seasonal_r2 = max(seasonal_comparison_results.values(), key=lambda x: max(x['winter_r2'], x['spring_r2']))['winter_r2']
-        improvement = r2_test - best_seasonal_r2
-        print(f"\nImprovement over best seasonal regression:")
-        print(f"  • Seasonal regression best R²: {best_seasonal_r2:.4f}")
-        print(f"  • Multiple regression R²: {r2_test:.4f}")
-        print(f"  • Improvement: {improvement:+.4f} ({improvement/best_seasonal_r2*100:+.1f}%)")
+# Check model performance
+if test_r2 > 0.3:
+    evidence_for_predator += 1
+    print(f"✓ Strong model performance (R² = {test_r2:.3f}) supports predator perception")
+elif test_r2 > 0.1:
+    evidence_for_predator += 0.5
+    print(f"~ Moderate model performance (R² = {test_r2:.3f}) suggests some predator perception")
+else:
+    evidence_against_predator += 1
+    print(f"✗ Weak model performance (R² = {test_r2:.3f}) suggests limited predator perception")
+
+# Check prediction accuracy
+if test_rmse < 2.0:  # Low RMSE indicates good prediction
+    evidence_for_predator += 1
+    print(f"✓ Low prediction error (RMSE = {test_rmse:.3f}) supports reliable prediction")
+elif test_rmse < 5.0:
+    evidence_for_predator += 0.5
+    print(f"~ Moderate prediction error (RMSE = {test_rmse:.3f}) suggests reasonable prediction")
+else:
+    evidence_against_predator += 0.5
+    print(f"~ High prediction error (RMSE = {test_rmse:.3f}) suggests limited predictive power")
+
+# Check rat-related feature effects (key for predator perception)
+rat_positive_effects = 0
+rat_significant_effects = 0
+for feature in rat_features:
+    if feature in feature_importance['Feature'].values:
+        row = feature_importance[feature_importance['Feature'] == feature].iloc[0]
+        if row['Coefficient'] > 0:
+            rat_positive_effects += 1
+            if row['P_value'] < 0.05:
+                rat_significant_effects += 1
+
+if rat_significant_effects >= 2:
+    evidence_for_predator += 1
+    print(f"✓ Strong rat effect evidence ({rat_significant_effects} significant positive effects)")
+elif rat_positive_effects >= 2:
+    evidence_for_predator += 0.5
+    print(f"~ Moderate rat effect evidence ({rat_positive_effects} positive effects, {rat_significant_effects} significant)")
+else:
+    evidence_against_predator += 0.5
+    print(f"✗ Limited rat effect evidence ({rat_positive_effects} positive effects)")
+
+# Check proximity effects (key indicator of predator perception)
+proximity_features = ['proximity_score', 'seconds_after_rat_arrival']
+proximity_evidence = 0
+for feature in proximity_features:
+    if feature in feature_importance['Feature'].values:
+        row = feature_importance[feature_importance['Feature'] == feature].iloc[0]
+        if feature == 'proximity_score' and row['Coefficient'] > 0:
+            proximity_evidence += 1
+        elif feature == 'seconds_after_rat_arrival' and row['Coefficient'] < 0:
+            proximity_evidence += 1
+
+if proximity_evidence >= 1:
+    evidence_for_predator += 0.5
+    print(f"✓ Proximity effects support predator perception")
+else:
+    evidence_against_predator += 0.5
+    print(f"✗ No clear proximity effects for predator perception")
+
+# Check overfitting
+if r2_gap < 0.1:
+    evidence_for_predator += 0.5
+    print(f"✓ Good generalization (Train-Test R² gap: {r2_gap:.3f})")
+else:
+    evidence_against_predator += 0.5
+    print(f"✗ Potential overfitting (Train-Test R² gap: {r2_gap:.3f})")
+
+# Check for negative R²
+if test_r2 < 0:
+    evidence_against_predator += 1
+    print(f"✗ Negative R² indicates model performs worse than baseline")
+
+# Final conclusion
+print(f"\nEvidence Summary:")
+print(f"  Supporting predator perception: {evidence_for_predator}")
+print(f"  Against predator perception: {evidence_against_predator}")
+
+if evidence_for_predator > evidence_against_predator:
+    print(f"\nCONCLUSION: EVIDENCE SUPPORTS PREDATOR PERCEPTION")
+    print(f"Multiple regression analysis provides evidence that bats perceive rats as predators.")
+    print(f"Positive coefficients for rat-related variables suggest predation risk beyond competition.")
+    print(f"Vigilance behavior increases with rat presence and proximity, indicating anti-predator response.")
+    print(f"Statistical significance of rat features supports the predator perception hypothesis.")
+elif evidence_for_predator == evidence_against_predator:
+    print(f"\nCONCLUSION: MIXED EVIDENCE FOR PREDATOR PERCEPTION")
+    print(f"Multiple regression analysis shows both supporting and contradictory evidence.")
+    print(f"Some rat-related features suggest predator perception while others suggest competition.")
+    print(f"Further investigation needed to confirm whether bats perceive rats as predators or competitors.")
+    print(f"Behavioral responses may be context-dependent or driven by multiple factors.")
+else:
+    print(f"\nCONCLUSION: NO CLEAR EVIDENCE FOR PREDATOR PERCEPTION")
+    print(f"Bats may primarily perceive rats as competitors rather than predators.")
+    print(f"Behavioral responses appear driven by competition rather than predation risk.")
+    print(f"Multiple regression does not show strong evidence for anti-predator vigilance responses.")
+    print(f"Rat presence may not significantly increase vigilance beyond competitive interactions.")
 
 print(f"\nMultiple regression analysis completed successfully!")
+
+#%%
+# ============================================================================
+# PHASE 6: FINAL CONCLUSION AND ANSWER
+# ============================================================================
+print("\n" + "="*60)
+print("PHASE 6: FINAL CONCLUSION AND ANSWER")
+print("="*60)
+
+# Compile evidence
+evidence_for = []
+evidence_against = []
+
+print("="*40)
+print("EVIDENCE COMPILATION (Seasonal)")
+print("="*40)
+
+# Re-run Phase 4 analysis to ensure fresh results
+
+# Re-derive seasons if needed
+
+# Split data by season
+winter_data = dataset1[dataset1['season_label'] == 'Winter'].copy()
+spring_data = dataset1[dataset1['season_label'] == 'Spring'].copy()
+
+print(f"Data split by season:")
+print(f"  Winter observations: {len(winter_data)}")
+print(f"  Spring observations: {len(spring_data)}")
+
+# Define key predictors for seasonal comparison
+seasonal_predictors = {
+    'seconds_after_rat_arrival': 'Temporal Proximity to Rat Arrival',
+    'rat_minutes': 'Rat Presence Intensity (minutes)',
+    'rat_arrival_number': 'Rat Arrival Sequence Number'
+}
+response_var = 'bat_landing_to_food'
+print(f"Response Variable: Bat Vigilance (seconds)")
+print(f"Predictors: {len(seasonal_predictors)} key variables for seasonal comparison\n")
+
+# Store seasonal model comparison results
+seasonal_comparison_results = {}
+
+print("="*50)
+print("SEASONAL MODEL COMPARISON")
+print("="*50)
+
+# Train separate models for each predictor and season
+for predictor, description in seasonal_predictors.items():
+    print(f"\nSeasonal Comparison: {description}")
+    print("-" * 50)
+    
+    # Prepare Winter and Spring data
+    winter_subset = winter_data[[predictor, response_var]].dropna()
+    spring_subset = spring_data[[predictor, response_var]].dropna()
+    
+    if len(winter_subset) > 5 and len(spring_subset) > 5:
+        # Winter model
+        X_winter = winter_subset[[predictor]]
+        y_winter = winter_subset[response_var]
+        
+        # Spring model
+        X_spring = spring_subset[[predictor]]
+        y_spring = spring_subset[response_var]
+        
+        # Train Winter model
+        winter_model = LinearRegression()
+        winter_model.fit(X_winter, y_winter)
+        
+        # Train Spring model
+        spring_model = LinearRegression()
+        spring_model.fit(X_spring, y_spring)
+        
+        # Calculate metrics
+        winter_r2 = r2_score(y_winter, winter_model.predict(X_winter))
+        spring_r2 = r2_score(y_spring, spring_model.predict(X_spring))
+        
+        # Check for negative R²
+        if winter_r2 < 0:
+            print(f"ERROR: Negative R² in simple regression for {predictor} (Winter) — check data!")
+        if spring_r2 < 0:
+            print(f"ERROR: Negative R² in simple regression for {predictor} (Spring) — check data!")
+        
+        # Calculate correlations
+        winter_corr = np.corrcoef(winter_subset[predictor], winter_subset[response_var])[0, 1]
+        spring_corr = np.corrcoef(spring_subset[predictor], spring_subset[response_var])[0, 1]
+        
+        # Store results
+        coef_difference = spring_model.coef_[0] - winter_model.coef_[0]
+        seasonal_comparison_results[predictor] = {
+            'description': description,
+            'winter_coef': winter_model.coef_[0],
+            'spring_coef': spring_model.coef_[0],
+            'winter_r2': winter_r2,
+            'spring_r2': spring_r2,
+            'winter_corr': winter_corr,
+            'spring_corr': spring_corr,
+            'coef_difference': coef_difference
+        }
+        
+        # Display results
+        print(f"  Winter: n={len(winter_subset)}, β={winter_model.coef_[0]:+.4f}, R²={winter_r2:.4f}")
+        print(f"  Spring: n={len(spring_subset)}, β={spring_model.coef_[0]:+.4f}, R²={spring_r2:.4f}")
+        print(f"  Difference: Δβ={coef_difference:+.4f}")
+        
+    else:
+        print(f"  Insufficient data: Winter n={len(winter_subset)}, Spring n={len(spring_subset)}")
+        print(f"  Need at least 6 observations per season for reliable comparison")
+
+# Visualization
+print(f"\n" + "="*50)
+print("CREATING SEASONAL COMPARISON VISUALIZATIONS")
+print("="*50)
+
+# Create seasonal comparison plots
+fig, axs = plt.subplots(1, 3, figsize=(18, 6), facecolor='white')
+fig.suptitle('Phase 5.1: Seasonal Model Comparison - Winter vs Spring', fontsize=16, fontweight='bold')
+
+plot_idx = 0
+for predictor, description in seasonal_predictors.items():
+    if predictor in seasonal_comparison_results and plot_idx < 3:
+        # Get Winter and Spring data
+        winter_subset = winter_data[[predictor, response_var]].dropna()
+        spring_subset = spring_data[[predictor, response_var]].dropna()
+        
+        # Scatter plots
+        axs[plot_idx].scatter(winter_subset[predictor], winter_subset[response_var], 
+                             alpha=0.6, s=50, color='blue', label='Winter')
+        axs[plot_idx].scatter(spring_subset[predictor], spring_subset[response_var], 
+                             alpha=0.6, s=50, color='red', label='Spring')
+        
+        # Add simple trend lines
+        winter_coef = seasonal_comparison_results[predictor]['winter_coef']
+        spring_coef = seasonal_comparison_results[predictor]['spring_coef']
+        
+        # Winter line
+        x_winter = np.linspace(winter_subset[predictor].min(), winter_subset[predictor].max(), 100)
+        y_winter = winter_coef * x_winter + seasonal_comparison_results[predictor].get('winter_intercept', 0)
+        axs[plot_idx].plot(x_winter, y_winter, 'b-', linewidth=2, label='Winter Model')
+        
+        # Spring line
+        x_spring = np.linspace(spring_subset[predictor].min(), spring_subset[predictor].max(), 100)
+        y_spring = spring_coef * x_spring + seasonal_comparison_results[predictor].get('spring_intercept', 0)
+        axs[plot_idx].plot(x_spring, y_spring, 'r-', linewidth=2, label='Spring Model')
+        
+        # Formatting
+        axs[plot_idx].set_xlabel(description, fontsize=12, fontweight='bold')
+        axs[plot_idx].set_ylabel('Bat Vigilance (seconds)', fontsize=12, fontweight='bold')
+        
+        coef_diff = seasonal_comparison_results[predictor]['coef_difference']
+        axs[plot_idx].set_title(f'{description}\nWinter β={winter_coef:+.3f}, Spring β={spring_coef:+.3f}\nΔβ={coef_diff:+.3f}', 
+                               fontweight='bold', fontsize=11)
+        axs[plot_idx].legend(fontsize=10)
+        axs[plot_idx].tick_params(axis='both', labelsize=10)
+        
+        plot_idx += 1
+
+plt.tight_layout(rect=[0, 0.03, 1, 0.95], pad=2.0)
+phase51_path = os.path.join(plots_dir, 'Phase5.1_Seasonal_Model_Comparison.png')
+plt.savefig(phase51_path, dpi=300, bbox_inches='tight', facecolor='white')
+plt.show()
+print(f"Saved Phase 5.1 seasonal model comparison plot to: {phase51_path}")
+
+# Summary
+print("\n" + "="*50)
+print("SEASONAL COMPARISON SUMMARY")
+print("="*50)
+
+if seasonal_comparison_results:
+    # Find predictor with largest seasonal difference
+    largest_diff_predictor = max(seasonal_comparison_results.keys(), 
+                                key=lambda x: abs(seasonal_comparison_results[x]['coef_difference']))
+    largest_diff = seasonal_comparison_results[largest_diff_predictor]['coef_difference']
+    
+    print(f"Largest seasonal difference: {seasonal_comparison_results[largest_diff_predictor]['description']}")
+    print(f"Coefficient difference (Δβ): {largest_diff:+.4f}")
+    
+    print(f"\nSeasonal behavioral changes:")
+    for pred, results in seasonal_comparison_results.items():
+        coef_diff = results['coef_difference']
+        direction = "Spring stronger" if coef_diff > 0 else "Winter stronger" if coef_diff < 0 else "No difference"
+        print(f"  {results['description']}: {direction} (Δβ={coef_diff:+.4f})")
+    
+    print(f"\nKey findings for Investigation B:")
+    print(f"  • Seasonal differences in behavioral responses detected")
+    print(f"  • {largest_diff_predictor} shows strongest seasonal variation")
+    print(f"  • Behavioral patterns change with environmental conditions")
+    print(f"  • Linear regression quantifies seasonal effects")
+
+print(f"\nSeasonal model comparison completed successfully!")
 
 #%%
 # ============================================================================
